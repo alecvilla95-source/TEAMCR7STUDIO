@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type CSSProperties } from "react";
 
 import { useFixture } from "../../store/fixtureStore";
 import { useChampion } from "../../store/championStore";
@@ -280,6 +280,7 @@ export default function ResultsView() {
       if (
         finishedMatch &&
         finishedMatch.winner &&
+        finishedMatch.stage !== "GROUP" &&
         !finishedMatch.nextMatchId
       ) {
         setChampion(finishedMatch.winner);
@@ -580,6 +581,18 @@ export default function ResultsView() {
           >
             <h3>
               Partido {match.id}
+
+              {match.stage === "GROUP" && (
+                <span
+                  style={{
+                    marginLeft: 10,
+                    color: "#60a5fa",
+                    fontSize: 14,
+                  }}
+                >
+                  👥 {match.groupName}
+                </span>
+              )}
 
               {active && (
                 <span
@@ -933,13 +946,13 @@ function InfoBox({
   );
 }
 
-const scoreControls: React.CSSProperties = {
+const scoreControls: CSSProperties = {
   display: "flex",
   gap: 8,
   alignItems: "center",
 };
 
-const scoreInput: React.CSSProperties = {
+const scoreInput: CSSProperties = {
   width: 70,
   padding: 10,
   fontSize: 20,
@@ -949,7 +962,7 @@ const scoreInput: React.CSSProperties = {
   border: "1px solid #334155",
 };
 
-const scoreButton: React.CSSProperties = {
+const scoreButton: CSSProperties = {
   width: 38,
   height: 38,
   borderRadius: 8,
@@ -961,7 +974,7 @@ const scoreButton: React.CSSProperties = {
   fontWeight: "bold",
 };
 
-const primaryButton: React.CSSProperties = {
+const primaryButton: CSSProperties = {
   padding: "12px 18px",
   background: "#2563eb",
   color: "white",
@@ -971,7 +984,7 @@ const primaryButton: React.CSSProperties = {
   fontWeight: "bold",
 };
 
-const greenButton: React.CSSProperties = {
+const greenButton: CSSProperties = {
   padding: "12px 18px",
   background: "#16a34a",
   color: "white",
@@ -981,7 +994,7 @@ const greenButton: React.CSSProperties = {
   fontWeight: "bold",
 };
 
-const secondaryButton: React.CSSProperties = {
+const secondaryButton: CSSProperties = {
   padding: "12px 18px",
   background: "#334155",
   color: "white",
@@ -991,7 +1004,7 @@ const secondaryButton: React.CSSProperties = {
   fontWeight: "bold",
 };
 
-const purpleButton: React.CSSProperties = {
+const purpleButton: CSSProperties = {
   padding: "12px 18px",
   background: "#7c3aed",
   color: "white",
