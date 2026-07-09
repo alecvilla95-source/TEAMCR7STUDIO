@@ -185,6 +185,12 @@ export default function ResultsView() {
       alert(`🏆 Campeón: ${finishedMatch.winner.name}`);
     }
 
+    pauseTimer();
+
+    if (activeMatchId === matchId) {
+      setActiveMatchId(null);
+    }
+
     setFixture(updatedMatches);
   }
 
@@ -195,6 +201,30 @@ export default function ResultsView() {
       (tournament?.duration ?? 20) * 60;
 
     resetTimer(duration);
+
+    const updatedFixture = fixture.map((match) => {
+      if (match.status === "FINISHED") {
+        return match;
+      }
+
+      if (match.id === matchId) {
+        return {
+          ...match,
+          status: "PLAYING" as const,
+        };
+      }
+
+      if (match.status === "PLAYING") {
+        return {
+          ...match,
+          status: "PENDING" as const,
+        };
+      }
+
+      return match;
+    });
+
+    setFixture(updatedFixture);
   }
 
   return (
@@ -314,6 +344,9 @@ export default function ResultsView() {
         const finished =
           match.status === "FINISHED";
 
+        const playing =
+          match.status === "PLAYING";
+
         const ready =
           Boolean(match.teamA && match.teamB);
 
@@ -332,11 +365,14 @@ export default function ResultsView() {
                 ? "2px solid #facc15"
                 : finished
                 ? "2px solid #16a34a"
+                : playing
+                ? "2px solid #22c55e"
                 : "1px solid #334155",
             }}
           >
             <h3>
               Partido {match.id}
+
               {active && (
                 <span
                   style={{
@@ -346,6 +382,18 @@ export default function ResultsView() {
                   }}
                 >
                   📺 En OBS
+                </span>
+              )}
+
+              {playing && (
+                <span
+                  style={{
+                    marginLeft: 10,
+                    color: "#22c55e",
+                    fontSize: 14,
+                  }}
+                >
+                  🟢 En juego
                 </span>
               )}
             </h3>
