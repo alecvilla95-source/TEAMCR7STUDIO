@@ -10,6 +10,11 @@ import type {
   TournamentMode,
 } from "../types/tournament";
 
+import {
+  loadData,
+  saveData,
+} from "../services/storageService";
+
 interface CreateTournamentData {
   name: string;
   mode: TournamentMode;
@@ -38,7 +43,12 @@ export function TournamentProvider({
   children: ReactNode;
 }) {
   const [tournament, setTournament] =
-    useState<Tournament | null>(null);
+    useState<Tournament | null>(() =>
+      loadData<Tournament | null>(
+        "tournament",
+        null
+      )
+    );
 
   function createTournament(
     data: CreateTournamentData
@@ -64,6 +74,11 @@ export function TournamentProvider({
     };
 
     setTournament(tournament);
+
+    saveData(
+      "tournament",
+      tournament
+    );
   }
 
   return (

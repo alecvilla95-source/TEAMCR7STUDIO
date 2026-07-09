@@ -7,53 +7,56 @@ import {
 
 import type { Match } from "../types/match";
 
-interface FixtureContextType {
+import {
+  loadData,
+  saveData,
+} from "../services/storageService";
 
+interface FixtureContextType {
   fixture: Match[];
 
-  setFixture: (
-    fixture: Match[]
-  ) => void;
-
+  setFixture: (fixture: Match[]) => void;
 }
 
 const FixtureContext =
-createContext<FixtureContextType>(
-{} as FixtureContextType
-);
+  createContext<FixtureContextType>(
+    {} as FixtureContextType
+  );
 
 export function FixtureProvider({
-children,
-}:{
-children:ReactNode;
-}){
+  children,
+}: {
+  children: ReactNode;
+}) {
+  const [fixture, setFixtureState] =
+    useState<Match[]>(() =>
+      loadData<Match[]>(
+        "fixture",
+        []
+      )
+    );
 
-const[
-fixture,
-setFixture
-]=useState<Match[]>([]);
+  function setFixture(fixture: Match[]) {
+    setFixtureState(fixture);
 
-return(
+    saveData(
+      "fixture",
+      fixture
+    );
+  }
 
-<FixtureContext.Provider
-value={{
-fixture,
-setFixture,
-}}
->
-
-{children}
-
-</FixtureContext.Provider>
-
-);
-
+  return (
+    <FixtureContext.Provider
+      value={{
+        fixture,
+        setFixture,
+      }}
+    >
+      {children}
+    </FixtureContext.Provider>
+  );
 }
 
-export function useFixture(){
-
-return useContext(
-FixtureContext
-);
-
+export function useFixture() {
+  return useContext(FixtureContext);
 }

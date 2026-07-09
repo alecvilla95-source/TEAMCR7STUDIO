@@ -1,0 +1,41 @@
+@media print {
+  aside {
+    display: none !important;
+  }
+
+  button {
+    display: none !important;
+  }
+
+  body {
+    background: white !important;
+    color: black !important;
+  }
+
+  main {
+    padding: 20px !important;
+    color: black !important;
+  }
+
+  h1,
+  h2,
+  h3,
+  p,
+  span,
+  div {
+    color: black !important;
+  }
+
+  div {
+    box-shadow: none !important;
+  }
+
+  [style] {
+    background: white !important;
+  }
+
+  @page {
+    size: A4;
+    margin: 12mm;
+  }
+}

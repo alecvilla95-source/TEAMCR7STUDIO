@@ -7,6 +7,11 @@ import {
 
 import type { Team } from "../types/team";
 
+import {
+  loadData,
+  saveData,
+} from "../services/storageService";
+
 interface ChampionContextType {
   champion: Team | null;
   setChampion: (team: Team | null) => void;
@@ -22,8 +27,22 @@ export function ChampionProvider({
 }: {
   children: ReactNode;
 }) {
-  const [champion, setChampion] =
-    useState<Team | null>(null);
+  const [champion, setChampionState] =
+    useState<Team | null>(() =>
+      loadData<Team | null>(
+        "champion",
+        null
+      )
+    );
+
+  function setChampion(team: Team | null) {
+    setChampionState(team);
+
+    saveData(
+      "champion",
+      team
+    );
+  }
 
   return (
     <ChampionContext.Provider
