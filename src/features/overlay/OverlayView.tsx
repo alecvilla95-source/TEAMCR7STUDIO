@@ -1,6 +1,7 @@
 import { useFixture } from "../../store/fixtureStore";
 import { useChampion } from "../../store/championStore";
 import { useTournament } from "../../store/tournamentStore";
+import { useOverlay } from "../../store/overlayStore";
 
 export default function OverlayView() {
   const { fixture } = useFixture();
@@ -9,7 +10,13 @@ export default function OverlayView() {
 
   const { tournament } = useTournament();
 
-  const currentMatch = fixture.find(
+  const { activeMatchId } = useOverlay();
+
+  const activeMatch = fixture.find(
+    (match) => match.id === activeMatchId
+  );
+
+  const nextMatch = fixture.find(
     (match) =>
       match.status !== "FINISHED" &&
       match.teamA &&
@@ -40,7 +47,12 @@ export default function OverlayView() {
     );
   }
 
-  if (!currentMatch && !lastFinished) {
+  const match =
+    activeMatch ??
+    nextMatch ??
+    lastFinished;
+
+  if (!match) {
     return (
       <div style={overlayContainer}>
         <div style={emptyBox}>
@@ -54,13 +66,8 @@ export default function OverlayView() {
     );
   }
 
-  const match = currentMatch ?? lastFinished;
-
-  if (!match) return null;
-
   return (
     <div style={overlayContainer}>
-
       <div style={topBar}>
         <div>
           {tournament?.name ?? "TEAMCR7STUDIO"}
@@ -72,7 +79,6 @@ export default function OverlayView() {
       </div>
 
       <div style={scoreboard}>
-
         <div style={teamBox}>
           <div style={teamName}>
             {match.teamA?.name ?? "Por definir"}
@@ -96,15 +102,15 @@ export default function OverlayView() {
             {match.scoreB}
           </div>
         </div>
-
       </div>
 
       <div style={bottomBar}>
         {match.status === "FINISHED"
           ? `🏆 Ganador: ${match.winner?.name ?? ""}`
-          : "PARTIDO EN VIVO"}
+          : activeMatchId
+          ? "PARTIDO SELECCIONADO"
+          : "PRÓXIMO PARTIDO"}
       </div>
-
     </div>
   );
 }

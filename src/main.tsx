@@ -11,6 +11,7 @@ import { TeamProvider } from "./store/teamStore";
 import { FixtureProvider } from "./store/fixtureStore";
 import { TournamentProvider } from "./store/tournamentStore";
 import { ChampionProvider } from "./store/championStore";
+import { OverlayProvider } from "./store/overlayStore";
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
@@ -19,7 +20,9 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
         <TeamProvider>
           <FixtureProvider>
             <ChampionProvider>
-              <App />
+              <OverlayProvider>
+                <App />
+              </OverlayProvider>
             </ChampionProvider>
           </FixtureProvider>
         </TeamProvider>

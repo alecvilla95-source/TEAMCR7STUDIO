@@ -2,12 +2,16 @@ import { useState } from "react";
 
 import { useFixture } from "../../store/fixtureStore";
 import { useChampion } from "../../store/championStore";
+import { useOverlay } from "../../store/overlayStore";
 
 import { applyResult } from "../../engine/resultEngine";
 
 export default function ResultsView() {
   const { fixture, setFixture } = useFixture();
+
   const { champion, setChampion } = useChampion();
+
+  const { activeMatchId, setActiveMatchId } = useOverlay();
 
   const [scores, setScores] = useState<
     Record<number, { a: number; b: number }>
@@ -84,7 +88,14 @@ export default function ResultsView() {
       )}
 
       {fixture.map((match) => {
-        const finished = match.status === "FINISHED";
+        const finished =
+          match.status === "FINISHED";
+
+        const ready =
+          Boolean(match.teamA && match.teamB);
+
+        const active =
+          activeMatchId === match.id;
 
         return (
           <div
@@ -94,12 +105,27 @@ export default function ResultsView() {
               padding: 20,
               borderRadius: 12,
               marginBottom: 25,
-              border: finished
+              border: active
+                ? "2px solid #facc15"
+                : finished
                 ? "2px solid #16a34a"
                 : "1px solid #334155",
             }}
           >
-            <h3>Partido {match.id}</h3>
+            <h3>
+              Partido {match.id}
+              {active && (
+                <span
+                  style={{
+                    marginLeft: 10,
+                    color: "#facc15",
+                    fontSize: 14,
+                  }}
+                >
+                  📺 En OBS
+                </span>
+              )}
+            </h3>
 
             <p>
               {match.teamA?.name ?? "Por definir"}
@@ -117,7 +143,7 @@ export default function ResultsView() {
               <input
                 type="number"
                 min={0}
-                disabled={finished || !match.teamA || !match.teamB}
+                disabled={finished || !ready}
                 value={scores[match.id]?.a ?? match.scoreA}
                 onChange={(e) =>
                   updateScore(
@@ -131,7 +157,7 @@ export default function ResultsView() {
               <input
                 type="number"
                 min={0}
-                disabled={finished || !match.teamA || !match.teamB}
+                disabled={finished || !ready}
                 value={scores[match.id]?.b ?? match.scoreB}
                 onChange={(e) =>
                   updateScore(
@@ -143,42 +169,69 @@ export default function ResultsView() {
               />
             </div>
 
-            {!finished ? (
-              <button
-                disabled={!match.teamA || !match.teamB}
-                onClick={() => saveResult(match.id)}
-                style={{
-                  marginTop: 20,
-                  padding: "10px 20px",
-                  background:
-                    !match.teamA || !match.teamB
+            <div
+              style={{
+                display: "flex",
+                gap: 12,
+                marginTop: 20,
+                flexWrap: "wrap",
+              }}
+            >
+              {!finished ? (
+                <button
+                  disabled={!ready}
+                  onClick={() => saveResult(match.id)}
+                  style={{
+                    padding: "10px 20px",
+                    background: !ready
                       ? "#475569"
                       : "#2563eb",
-                  color: "white",
-                  border: "none",
-                  borderRadius: 8,
-                  cursor:
-                    !match.teamA || !match.teamB
+                    color: "white",
+                    border: "none",
+                    borderRadius: 8,
+                    cursor: !ready
                       ? "not-allowed"
                       : "pointer",
-                }}
-              >
-                GUARDAR RESULTADO
-              </button>
-            ) : (
-              <div
+                  }}
+                >
+                  GUARDAR RESULTADO
+                </button>
+              ) : (
+                <div
+                  style={{
+                    padding: 12,
+                    background: "#14532d",
+                    color: "#bbf7d0",
+                    borderRadius: 8,
+                    fontWeight: "bold",
+                  }}
+                >
+                  🏆 Ganador: {match.winner?.name}
+                </div>
+              )}
+
+              <button
+                disabled={!ready}
+                onClick={() => setActiveMatchId(match.id)}
                 style={{
-                  marginTop: 20,
-                  padding: 12,
-                  background: "#14532d",
-                  color: "#bbf7d0",
+                  padding: "10px 20px",
+                  background: active
+                    ? "#facc15"
+                    : ready
+                    ? "#7c3aed"
+                    : "#475569",
+                  color: active ? "#111827" : "white",
+                  border: "none",
                   borderRadius: 8,
+                  cursor: ready
+                    ? "pointer"
+                    : "not-allowed",
                   fontWeight: "bold",
                 }}
               >
-                🏆 Ganador: {match.winner?.name}
-              </div>
-            )}
+                📺 MOSTRAR EN OBS
+              </button>
+            </div>
           </div>
         );
       })}
