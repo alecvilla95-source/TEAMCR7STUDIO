@@ -1,10 +1,70 @@
+import {
+  type CSSProperties,
+} from "react";
+
+import type { Match } from "../../types/match";
+
 import { useApp } from "../../store/appStore";
 import { useTournament } from "../../store/tournamentStore";
 import { useTeams } from "../../store/teamStore";
 import { useFixture } from "../../store/fixtureStore";
 import { useChampion } from "../../store/championStore";
 
-import { clearAllData } from "../../services/storageService";
+function getCourtLabel(match: Match) {
+  return (
+    match.courtLabel ??
+    `Cancha ${match.court || 1}`
+  );
+}
+
+function getCategoryLabel(match: Match) {
+  if (match.category === "WOMEN") {
+    return "MUJERES";
+  }
+
+  if (match.category === "MEN") {
+    return "VARONES";
+  }
+
+  return "GENERAL";
+}
+
+function getCategoryColor(match: Match) {
+  if (match.category === "WOMEN") {
+    return "#f9a8d4";
+  }
+
+  if (match.category === "MEN") {
+    return "#93c5fd";
+  }
+
+  return "#facc15";
+}
+
+function getTeamName(
+  match: Match,
+  side: "A" | "B"
+) {
+  const team =
+    side === "A"
+      ? match.teamA
+      : match.teamB;
+
+  const sourceMatch =
+    side === "A"
+      ? match.sourceMatchA
+      : match.sourceMatchB;
+
+  if (team) {
+    return team.name;
+  }
+
+  if (sourceMatch) {
+    return `Ganador Partido ${sourceMatch}`;
+  }
+
+  return "Por definir";
+}
 
 export default function Dashboard() {
   const { setPage } = useApp();
@@ -15,369 +75,257 @@ export default function Dashboard() {
 
   const { fixture } = useFixture();
 
-  const { champion } = useChampion();
+  const { champions } = useChampion();
 
-  const totalMatches = fixture.length;
+  const matches = fixture ?? [];
 
-  const finishedMatches = fixture.filter(
+  const totalMatches = matches.length;
+
+  const finishedMatches = matches.filter(
     (match) => match.status === "FINISHED"
   ).length;
 
-  const pendingMatches =
-    totalMatches - finishedMatches;
+  const pendingMatches = matches.filter(
+    (match) => match.status !== "FINISHED"
+  ).length;
 
-  const playingMatch = fixture.find(
+  const playingMatch = matches.find(
     (match) => match.status === "PLAYING"
   );
 
-  const nextMatch = fixture.find(
-    (match) =>
-      match.status !== "FINISHED" &&
-      match.teamA &&
-      match.teamB
-  );
+  const nextMatch =
+    playingMatch ??
+    matches.find(
+      (match) => match.status !== "FINISHED"
+    ) ??
+    null;
 
-  function resetTournament() {
-    const confirmReset = confirm(
-      "¿Seguro que desea borrar el campeonato guardado?"
-    );
+  const menTeams = teams.filter(
+    (team) => team.category !== "WOMEN"
+  ).length;
 
-    if (!confirmReset) return;
-
-    clearAllData();
-
-    window.location.reload();
-  }
+  const womenTeams = teams.filter(
+    (team) => team.category === "WOMEN"
+  ).length;
 
   return (
     <div>
-      <h2>Bienvenido a TEAMCR7STUDIO</h2>
-
-      <p
-        style={{
-          color: "#cbd5e1",
-          fontSize: 18,
-          marginBottom: 30,
-        }}
-      >
-        Administrador Profesional de Campeonatos Relámpago
-      </p>
-
-      {tournament ? (
-        <div
-          style={{
-            background: "#1e293b",
-            padding: 25,
-            borderRadius: 14,
-            marginBottom: 30,
-            border: "1px solid #334155",
-          }}
-        >
+      <div style={heroBox}>
+        <div>
           <h2
             style={{
-              marginTop: 0,
-              marginBottom: 10,
+              margin: 0,
+              color: "#94a3b8",
             }}
           >
-            🏆 {tournament.name}
+            Panel Principal
           </h2>
+
+          <h1
+            style={{
+              marginTop: 8,
+              marginBottom: 10,
+              fontSize: 42,
+            }}
+          >
+            {tournament?.name ?? "TEAMCR7STUDIO"}
+          </h1>
 
           <p
             style={{
-              color: "#94a3b8",
-              marginBottom: 0,
+              color: "#cbd5e1",
+              margin: 0,
             }}
           >
-            Modalidad:{" "}
-            <strong>
-              {tournament.mode === "ELIMINATION"
-                ? "Eliminación Directa"
-                : "Fase de Grupos"}
-            </strong>
+            Organizador profesional para campeonatos relámpago,
+            fixture, resultados y OBS.
           </p>
         </div>
-      ) : (
-        <div
-          style={{
-            background: "#1e293b",
-            padding: 25,
-            borderRadius: 14,
-            marginBottom: 30,
-            border: "1px solid #334155",
-          }}
-        >
-          <h2
-            style={{
-              marginTop: 0,
-            }}
-          >
-            No hay campeonato activo
-          </h2>
 
-          <p
-            style={{
-              color: "#94a3b8",
-            }}
-          >
-            Crea un campeonato para comenzar.
-          </p>
-
+        <div style={heroActions}>
           <button
             onClick={() => setPage("tournament")}
             style={primaryButton}
           >
-            🏆 CREAR CAMPEONATO
+            🏆 Nuevo Campeonato
           </button>
-        </div>
-      )}
 
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns:
-            "repeat(auto-fit, minmax(180px, 1fr))",
-          gap: 20,
-          marginBottom: 30,
-        }}
-      >
-        <StatCard
-          icon="🏆"
-          title="Campeonatos"
-          value={tournament ? 1 : 0}
-        />
-
-        <StatCard
-          icon="👥"
-          title="Equipos"
-          value={teams.length}
-        />
-
-        <StatCard
-          icon="⚽"
-          title="Partidos"
-          value={totalMatches}
-        />
-
-        <StatCard
-          icon="✅"
-          title="Jugados"
-          value={finishedMatches}
-        />
-
-        <StatCard
-          icon="⏳"
-          title="Pendientes"
-          value={pendingMatches}
-        />
-
-        <StatCard
-          icon="🏟"
-          title="Canchas"
-          value={tournament?.courts ?? 0}
-        />
-      </div>
-
-      {playingMatch && (
-        <div
-          style={{
-            background: "#052e16",
-            border: "1px solid #22c55e",
-            padding: 20,
-            borderRadius: 14,
-            marginBottom: 30,
-          }}
-        >
-          <h3
-            style={{
-              marginTop: 0,
-              color: "#86efac",
-            }}
-          >
-            🟢 Partido en juego
-          </h3>
-
-          <p
-            style={{
-              fontSize: 20,
-              fontWeight: "bold",
-            }}
-          >
-            {playingMatch.teamA?.name} VS {playingMatch.teamB?.name}
-          </p>
-
-          <p
-            style={{
-              color: "#bbf7d0",
-            }}
-          >
-            🕒 {playingMatch.time} | 🏟 Cancha {playingMatch.court}
-          </p>
-        </div>
-      )}
-
-      {!playingMatch && nextMatch && (
-        <div
-          style={{
-            background: "#0f172a",
-            border: "1px solid #2563eb",
-            padding: 20,
-            borderRadius: 14,
-            marginBottom: 30,
-          }}
-        >
-          <h3
-            style={{
-              marginTop: 0,
-              color: "#60a5fa",
-            }}
-          >
-            🔜 Próximo partido
-          </h3>
-
-          <p
-            style={{
-              fontSize: 20,
-              fontWeight: "bold",
-            }}
-          >
-            {nextMatch.teamA?.name} VS {nextMatch.teamB?.name}
-          </p>
-
-          <p
-            style={{
-              color: "#94a3b8",
-            }}
-          >
-            🕒 {nextMatch.time} | 🏟 Cancha {nextMatch.court}
-          </p>
-        </div>
-      )}
-
-      {champion && (
-        <div
-          style={{
-            background: "#713f12",
-            border: "1px solid #facc15",
-            color: "#fef3c7",
-            padding: 25,
-            borderRadius: 14,
-            marginBottom: 30,
-            textAlign: "center",
-          }}
-        >
-          <h2
-            style={{
-              marginTop: 0,
-              fontSize: 30,
-            }}
-          >
-            🏆 CAMPEÓN
-          </h2>
-
-          <div
-            style={{
-              fontSize: 34,
-              fontWeight: "bold",
-            }}
-          >
-            {champion.name}
-          </div>
-        </div>
-      )}
-
-      <div
-        style={{
-          background: "#1e293b",
-          border: "1px solid #334155",
-          padding: 25,
-          borderRadius: 14,
-        }}
-      >
-        <h3
-          style={{
-            marginTop: 0,
-            marginBottom: 20,
-          }}
-        >
-          Accesos rápidos
-        </h3>
-
-        <div
-          style={{
-            display: "flex",
-            gap: 15,
-            flexWrap: "wrap",
-          }}
-        >
           <button
             onClick={() => setPage("fixture")}
-            style={primaryButton}
+            style={secondaryButton}
           >
-            📅 FIXTURE
+            📅 Ver Fixture
           </button>
 
           <button
             onClick={() => setPage("results")}
             style={secondaryButton}
           >
-            📊 RESULTADOS
-          </button>
-
-          <button
-            onClick={() => setPage("overlay")}
-            style={purpleButton}
-          >
-            📺 OVERLAY OBS
-          </button>
-
-          <button
-            onClick={() => setPage("settings")}
-            style={secondaryButton}
-          >
-            ⚙ CONFIGURACIÓN
-          </button>
-
-          <button
-            onClick={() => setPage("tournament")}
-            style={secondaryButton}
-          >
-            🏆 NUEVO CAMPEONATO
-          </button>
-
-          <button
-            onClick={resetTournament}
-            style={dangerButton}
-          >
-            🗑 BORRAR DATOS
+            📊 Resultados
           </button>
         </div>
+      </div>
+
+      <div style={statsGrid}>
+        <StatCard
+          label="Equipos Totales"
+          value={teams.length}
+          icon="👥"
+        />
+
+        <StatCard
+          label="Varones"
+          value={menTeams}
+          icon="⚽"
+        />
+
+        <StatCard
+          label="Mujeres"
+          value={womenTeams}
+          icon="👩"
+        />
+
+        <StatCard
+          label="Partidos"
+          value={totalMatches}
+          icon="📅"
+        />
+
+        <StatCard
+          label="Jugados"
+          value={finishedMatches}
+          icon="✅"
+        />
+
+        <StatCard
+          label="Pendientes"
+          value={pendingMatches}
+          icon="⏳"
+        />
+
+        <StatCard
+          label="Canchas Varones"
+          value={tournament?.courts ?? 0}
+          icon="🏟"
+        />
+
+        <StatCard
+          label="Canchas Mujeres"
+          value={tournament?.womenCourts ?? 0}
+          icon="🏟"
+        />
+      </div>
+
+      <div style={mainGrid}>
+        <div style={panelBox}>
+          <h2
+            style={{
+              marginTop: 0,
+            }}
+          >
+            🏆 Campeones
+          </h2>
+
+          <ChampionBox
+            title="Campeón Varones"
+            value={champions.MEN?.name ?? "Pendiente"}
+            color="#93c5fd"
+          />
+
+          {(tournament?.womenCourts ?? 0) > 0 && (
+            <ChampionBox
+              title="Campeona Mujeres"
+              value={champions.WOMEN?.name ?? "Pendiente"}
+              color="#f9a8d4"
+            />
+          )}
+
+          {champions.GENERAL && (
+            <ChampionBox
+              title="Campeón General"
+              value={champions.GENERAL.name}
+              color="#facc15"
+            />
+          )}
+        </div>
+
+        <div style={panelBox}>
+          <h2
+            style={{
+              marginTop: 0,
+            }}
+          >
+            🔴 Partido actual / siguiente
+          </h2>
+
+          {nextMatch ? (
+            <NextMatchCard match={nextMatch} />
+          ) : (
+            <p
+              style={{
+                color: "#94a3b8",
+              }}
+            >
+              Todavía no hay partidos pendientes.
+            </p>
+          )}
+        </div>
+      </div>
+
+      <div style={quickGrid}>
+        <QuickButton
+          title="Registrar Equipos"
+          description="Agrega equipos o importa desde Excel."
+          icon="👥"
+          onClick={() => setPage("teams")}
+        />
+
+        <QuickButton
+          title="Fixture"
+          description="Revisa llaves, canchas y horarios."
+          icon="📅"
+          onClick={() => setPage("fixture")}
+        />
+
+        <QuickButton
+          title="Resultados"
+          description="Guarda marcadores, penales y campeones."
+          icon="📊"
+          onClick={() => setPage("results")}
+        />
+
+        <QuickButton
+          title="Overlay OBS"
+          description="Pantalla en vivo para transmisión."
+          icon="📺"
+          onClick={() => setPage("overlay")}
+        />
+
+        <QuickButton
+          title="Configuración"
+          description="Backup, restauración y limpieza."
+          icon="⚙️"
+          onClick={() => setPage("settings")}
+        />
       </div>
     </div>
   );
 }
 
 function StatCard({
-  icon,
-  title,
+  label,
   value,
+  icon,
 }: {
-  icon: string;
-  title: string;
+  label: string;
   value: string | number;
+  icon: string;
 }) {
   return (
-    <div
-      style={{
-        background: "#1e293b",
-        padding: 22,
-        borderRadius: 14,
-        border: "1px solid #334155",
-      }}
-    >
+    <div style={statCard}>
       <div
         style={{
-          fontSize: 26,
-          marginBottom: 10,
+          fontSize: 28,
         }}
       >
         {icon}
@@ -386,6 +334,49 @@ function StatCard({
       <div
         style={{
           color: "#94a3b8",
+          fontSize: 13,
+          marginTop: 8,
+        }}
+      >
+        {label}
+      </div>
+
+      <div
+        style={{
+          fontSize: 28,
+          fontWeight: "bold",
+          marginTop: 5,
+        }}
+      >
+        {value}
+      </div>
+    </div>
+  );
+}
+
+function ChampionBox({
+  title,
+  value,
+  color,
+}: {
+  title: string;
+  value: string;
+  color: string;
+}) {
+  return (
+    <div
+      style={{
+        background: "#0f172a",
+        border: `1px solid ${color}`,
+        borderRadius: 12,
+        padding: 16,
+        marginBottom: 14,
+      }}
+    >
+      <div
+        style={{
+          color,
+          fontWeight: "bold",
           marginBottom: 8,
         }}
       >
@@ -394,7 +385,7 @@ function StatCard({
 
       <div
         style={{
-          fontSize: 34,
+          fontSize: 24,
           fontWeight: "bold",
         }}
       >
@@ -404,8 +395,183 @@ function StatCard({
   );
 }
 
-const primaryButton: React.CSSProperties = {
-  padding: "14px 22px",
+function NextMatchCard({
+  match,
+}: {
+  match: Match;
+}) {
+  const color = getCategoryColor(match);
+
+  return (
+    <div
+      style={{
+        background: "#0f172a",
+        border: `1px solid ${color}`,
+        borderRadius: 12,
+        padding: 18,
+      }}
+    >
+      <div
+        style={{
+          color,
+          fontWeight: "bold",
+          marginBottom: 12,
+        }}
+      >
+        {getCategoryLabel(match)}
+      </div>
+
+      <div
+        style={{
+          color: "#94a3b8",
+          marginBottom: 12,
+        }}
+      >
+        🕒 {match.time || "--:--"} | 🏟 {getCourtLabel(match)}
+      </div>
+
+      <div style={matchTeam}>
+        {getTeamName(match, "A")}
+      </div>
+
+      <div style={vsText}>VS</div>
+
+      <div style={matchTeam}>
+        {getTeamName(match, "B")}
+      </div>
+
+      <div
+        style={{
+          marginTop: 14,
+          color:
+            match.status === "PLAYING"
+              ? "#22c55e"
+              : "#facc15",
+          fontWeight: "bold",
+        }}
+      >
+        {match.status === "PLAYING"
+          ? "EN JUEGO"
+          : "PENDIENTE"}
+      </div>
+    </div>
+  );
+}
+
+function QuickButton({
+  title,
+  description,
+  icon,
+  onClick,
+}: {
+  title: string;
+  description: string;
+  icon: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      style={quickButton}
+    >
+      <div
+        style={{
+          fontSize: 32,
+          marginBottom: 10,
+        }}
+      >
+        {icon}
+      </div>
+
+      <strong
+        style={{
+          fontSize: 18,
+        }}
+      >
+        {title}
+      </strong>
+
+      <p
+        style={{
+          color: "#94a3b8",
+          marginBottom: 0,
+        }}
+      >
+        {description}
+      </p>
+    </button>
+  );
+}
+
+const heroBox: CSSProperties = {
+  background:
+    "linear-gradient(135deg, #1e293b, #0f172a)",
+  border: "1px solid #334155",
+  borderRadius: 18,
+  padding: 30,
+  marginBottom: 25,
+  display: "flex",
+  justifyContent: "space-between",
+  gap: 25,
+  flexWrap: "wrap",
+  alignItems: "center",
+};
+
+const heroActions: CSSProperties = {
+  display: "flex",
+  gap: 12,
+  flexWrap: "wrap",
+};
+
+const statsGrid: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns:
+    "repeat(auto-fit, minmax(150px, 1fr))",
+  gap: 15,
+  marginBottom: 25,
+};
+
+const statCard: CSSProperties = {
+  background: "#1e293b",
+  border: "1px solid #334155",
+  borderRadius: 14,
+  padding: 18,
+};
+
+const mainGrid: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns:
+    "repeat(auto-fit, minmax(320px, 1fr))",
+  gap: 20,
+  marginBottom: 25,
+};
+
+const panelBox: CSSProperties = {
+  background: "#1e293b",
+  border: "1px solid #334155",
+  borderRadius: 14,
+  padding: 20,
+};
+
+const quickGrid: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns:
+    "repeat(auto-fit, minmax(220px, 1fr))",
+  gap: 15,
+};
+
+const quickButton: CSSProperties = {
+  background: "#1e293b",
+  border: "1px solid #334155",
+  borderRadius: 14,
+  padding: 20,
+  color: "white",
+  textAlign: "left",
+  cursor: "pointer",
+};
+
+const primaryButton: CSSProperties = {
+  padding: "13px 20px",
   background: "#2563eb",
   color: "white",
   border: "none",
@@ -414,19 +580,9 @@ const primaryButton: React.CSSProperties = {
   fontWeight: "bold",
 };
 
-const secondaryButton: React.CSSProperties = {
-  padding: "14px 22px",
-  background: "#1e293b",
-  color: "white",
-  border: "1px solid #334155",
-  borderRadius: 10,
-  cursor: "pointer",
-  fontWeight: "bold",
-};
-
-const purpleButton: React.CSSProperties = {
-  padding: "14px 22px",
-  background: "#7c3aed",
+const secondaryButton: CSSProperties = {
+  padding: "13px 20px",
+  background: "#334155",
   color: "white",
   border: "none",
   borderRadius: 10,
@@ -434,12 +590,13 @@ const purpleButton: React.CSSProperties = {
   fontWeight: "bold",
 };
 
-const dangerButton: React.CSSProperties = {
-  padding: "14px 22px",
-  background: "#991b1b",
-  color: "white",
-  border: "none",
-  borderRadius: 10,
-  cursor: "pointer",
+const matchTeam: CSSProperties = {
+  fontSize: 22,
   fontWeight: "bold",
+};
+
+const vsText: CSSProperties = {
+  color: "#60a5fa",
+  fontWeight: "bold",
+  margin: "10px 0",
 };
