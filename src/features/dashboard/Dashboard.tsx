@@ -1,8 +1,10 @@
 import {
+  useState,
   type CSSProperties,
 } from "react";
 
 import type { Match } from "../../types/match";
+import type { Team } from "../../types/team";
 
 import { useApp } from "../../store/appStore";
 import { useTournament } from "../../store/tournamentStore";
@@ -76,6 +78,9 @@ export default function Dashboard() {
   const { fixture } = useFixture();
 
   const { champions } = useChampion();
+
+  const [showParticipants, setShowParticipants] =
+    useState(false);
 
   const matches = fixture ?? [];
 
@@ -166,6 +171,13 @@ export default function Dashboard() {
             style={primaryButton}
           >
             🏆 Nuevo Campeonato
+          </button>
+
+          <button
+            onClick={() => setShowParticipants(true)}
+            style={secondaryButton}
+          >
+            👥 Ver Participantes
           </button>
 
           <button
@@ -268,78 +280,102 @@ export default function Dashboard() {
         </div>
 
         <div style={panelBox}>
-          <h2
+          <div
             style={{
-              marginTop: 0,
+              display: "flex",
+              justifyContent: "space-between",
+              gap: 12,
+              alignItems: "center",
+              flexWrap: "wrap",
             }}
           >
-            📋 Equipos por cancha
-          </h2>
+            <h2
+              style={{
+                marginTop: 0,
+                marginBottom: 0,
+              }}
+            >
+              📋 Equipos por cancha
+            </h2>
 
-          <div style={courtCountGrid}>
-            <div>
-              <h3
-                style={{
-                  color: "#93c5fd",
-                  marginTop: 0,
-                }}
-              >
-                VARONES
-              </h3>
+            <button
+              onClick={() => setShowParticipants(true)}
+              style={miniButton}
+            >
+              👥 Ver lista completa
+            </button>
+          </div>
 
-              {menCourts > 0 ? (
-                Array.from({
-                  length: menCourts,
-                }).map((_, index) => (
-                  <CourtCountRow
-                    key={index}
-                    label={`Cancha ${index + 1}`}
-                    value={countMenByCourt(index + 1)}
-                    color="#93c5fd"
-                  />
-                ))
-              ) : (
-                <p style={mutedText}>
-                  Sin canchas de varones.
-                </p>
-              )}
+          <div
+            style={{
+              marginTop: 18,
+            }}
+          >
+            <div style={courtCountGrid}>
+              <div>
+                <h3
+                  style={{
+                    color: "#93c5fd",
+                    marginTop: 0,
+                  }}
+                >
+                  VARONES
+                </h3>
 
-              <div style={totalMiniBox}>
-                Total Varones:{" "}
-                <strong>{menTeams.length}</strong>
+                {menCourts > 0 ? (
+                  Array.from({
+                    length: menCourts,
+                  }).map((_, index) => (
+                    <CourtCountRow
+                      key={index}
+                      label={`Cancha ${index + 1}`}
+                      value={countMenByCourt(index + 1)}
+                      color="#93c5fd"
+                    />
+                  ))
+                ) : (
+                  <p style={mutedText}>
+                    Sin canchas de varones.
+                  </p>
+                )}
+
+                <div style={totalMiniBox}>
+                  Total Varones:{" "}
+                  <strong>{menTeams.length}</strong>
+                </div>
               </div>
-            </div>
 
-            <div>
-              <h3
-                style={{
-                  color: "#f9a8d4",
-                  marginTop: 0,
-                }}
-              >
-                MUJERES
-              </h3>
+              <div>
+                <h3
+                  style={{
+                    color: "#f9a8d4",
+                    marginTop: 0,
+                  }}
+                >
+                  MUJERES
+                </h3>
 
-              {womenCourts > 0 ? (
-                Array.from({
-                  length: womenCourts,
-                }).map((_, index) => (
-                  <CourtCountRow
-                    key={index}
-                    label={`C. Mujer ${index + 1}`}
-                    value={countWomenByCourt(index + 1)}
-                    color="#f9a8d4"
-                  />
-                ))
-              ) : (
-                <p style={mutedText}>
-                  Sin canchas de mujeres.
-                </p>
-              )}
+                {womenCourts > 0 ? (
+                  Array.from({
+                    length: womenCourts,
+                  }).map((_, index) => (
+                    <CourtCountRow
+                      key={index}
+                      label={`C. Mujer ${index + 1}`}
+                      value={countWomenByCourt(index + 1)}
+                      color="#f9a8d4"
+                    />
+                  ))
+                ) : (
+                  <p style={mutedText}>
+                    Sin canchas de mujeres.
+                  </p>
+                )}
 
-              <div style={totalMiniBox}>
-                Total Mujeres:{" "}
-                <strong>{womenTeams.length}</strong>
+                <div style={totalMiniBox}>
+                  Total Mujeres:{" "}
+                  <strong>{womenTeams.length}</strong>
+                </div>
               </div>
             </div>
           </div>
@@ -369,6 +405,13 @@ export default function Dashboard() {
       </div>
 
       <div style={quickGrid}>
+        <QuickButton
+          title="Participantes"
+          description="Mira la lista completa de varones y mujeres."
+          icon="👥"
+          onClick={() => setShowParticipants(true)}
+        />
+
         <QuickButton
           title="Registrar Equipos"
           description="Agrega equipos o importa desde Excel."
@@ -404,6 +447,16 @@ export default function Dashboard() {
           onClick={() => setPage("settings")}
         />
       </div>
+
+      {showParticipants && (
+        <ParticipantsModal
+          menTeams={menTeams}
+          womenTeams={womenTeams}
+          menCourts={menCourts}
+          womenCourts={womenCourts}
+          onClose={() => setShowParticipants(false)}
+        />
+      )}
     </div>
   );
 }
@@ -636,6 +689,285 @@ function QuickButton({
   );
 }
 
+function ParticipantsModal({
+  menTeams,
+  womenTeams,
+  menCourts,
+  womenCourts,
+  onClose,
+}: {
+  menTeams: Team[];
+  womenTeams: Team[];
+  menCourts: number;
+  womenCourts: number;
+  onClose: () => void;
+}) {
+  return (
+    <div style={modalOverlay}>
+      <div style={modalBox}>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            gap: 15,
+            alignItems: "center",
+            marginBottom: 20,
+          }}
+        >
+          <div>
+            <h2
+              style={{
+                margin: 0,
+                fontSize: 30,
+              }}
+            >
+              👥 Participantes del Campeonato
+            </h2>
+
+            <p
+              style={{
+                color: "#94a3b8",
+                marginBottom: 0,
+              }}
+            >
+              Lista completa de equipos registrados, separados por categoría
+              y cancha.
+            </p>
+          </div>
+
+          <button
+            onClick={onClose}
+            style={closeButton}
+          >
+            ✕ Cerrar
+          </button>
+        </div>
+
+        <div style={participantsSummary}>
+          <ParticipantTotalBox
+            label="Total Varones"
+            value={menTeams.length}
+            color="#93c5fd"
+          />
+
+          <ParticipantTotalBox
+            label="Total Mujeres"
+            value={womenTeams.length}
+            color="#f9a8d4"
+          />
+
+          <ParticipantTotalBox
+            label="Total General"
+            value={menTeams.length + womenTeams.length}
+            color="#facc15"
+          />
+        </div>
+
+        <div style={participantsGrid}>
+          <ParticipantCategorySection
+            title="⚽ VARONES"
+            teams={menTeams}
+            courts={menCourts}
+            courtPrefix="Cancha"
+            color="#93c5fd"
+          />
+
+          <ParticipantCategorySection
+            title="👩 MUJERES"
+            teams={womenTeams}
+            courts={womenCourts}
+            courtPrefix="C. Mujer"
+            color="#f9a8d4"
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ParticipantTotalBox({
+  label,
+  value,
+  color,
+}: {
+  label: string;
+  value: number;
+  color: string;
+}) {
+  return (
+    <div
+      style={{
+        background: "#0f172a",
+        border: `1px solid ${color}`,
+        borderRadius: 12,
+        padding: 14,
+      }}
+    >
+      <div
+        style={{
+          color,
+          fontWeight: "bold",
+          marginBottom: 6,
+        }}
+      >
+        {label}
+      </div>
+
+      <div
+        style={{
+          fontSize: 26,
+          fontWeight: "bold",
+        }}
+      >
+        {value}
+      </div>
+    </div>
+  );
+}
+
+function ParticipantCategorySection({
+  title,
+  teams,
+  courts,
+  courtPrefix,
+  color,
+}: {
+  title: string;
+  teams: Team[];
+  courts: number;
+  courtPrefix: string;
+  color: string;
+}) {
+  const groups = getParticipantGroups(
+    teams,
+    courts,
+    courtPrefix
+  );
+
+  return (
+    <div
+      style={{
+        background: "#111827",
+        border: `1px solid ${color}`,
+        borderRadius: 14,
+        padding: 18,
+      }}
+    >
+      <h3
+        style={{
+          color,
+          marginTop: 0,
+          fontSize: 24,
+        }}
+      >
+        {title}
+      </h3>
+
+      <p
+        style={{
+          color: "#94a3b8",
+        }}
+      >
+        Total: <strong>{teams.length}</strong> equipos
+      </p>
+
+      {teams.length === 0 && (
+        <div style={emptyParticipants}>
+          No hay equipos registrados en esta categoría.
+        </div>
+      )}
+
+      {groups.map((group) => (
+        <div
+          key={group.label}
+          style={{
+            marginTop: 18,
+          }}
+        >
+          <h4
+            style={{
+              color,
+              borderBottom: "1px solid #334155",
+              paddingBottom: 8,
+              marginBottom: 10,
+            }}
+          >
+            🏟 {group.label}{" "}
+            <span
+              style={{
+                color: "#94a3b8",
+                fontSize: 14,
+              }}
+            >
+              ({group.teams.length})
+            </span>
+          </h4>
+
+          {group.teams.length === 0 ? (
+            <p style={mutedText}>
+              Sin equipos registrados.
+            </p>
+          ) : (
+            <div style={teamList}>
+              {group.teams.map((team, index) => (
+                <div
+                  key={team.id}
+                  style={participantRow}
+                >
+                  <span style={participantNumber}>
+                    {index + 1}
+                  </span>
+
+                  <strong>{team.name}</strong>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function getParticipantGroups(
+  teams: Team[],
+  courts: number,
+  courtPrefix: string
+) {
+  const groups: {
+    label: string;
+    teams: Team[];
+  }[] = [];
+
+  for (
+    let court = 1;
+    court <= courts;
+    court++
+  ) {
+    const courtTeams = teams.filter(
+      (team) => team.assignedCourt === court
+    );
+
+    groups.push({
+      label: `${courtPrefix} ${court}`,
+      teams: courtTeams,
+    });
+  }
+
+  const unassigned = teams.filter(
+    (team) => !team.assignedCourt
+  );
+
+  if (unassigned.length > 0) {
+    groups.push({
+      label: "Sin cancha asignada",
+      teams: unassigned,
+    });
+  }
+
+  return groups;
+}
+
 const heroBox: CSSProperties = {
   background:
     "linear-gradient(135deg, #1e293b, #0f172a)",
@@ -743,6 +1075,16 @@ const secondaryButton: CSSProperties = {
   fontWeight: "bold",
 };
 
+const miniButton: CSSProperties = {
+  padding: "10px 14px",
+  background: "#2563eb",
+  color: "white",
+  border: "none",
+  borderRadius: 8,
+  cursor: "pointer",
+  fontWeight: "bold",
+};
+
 const matchTeam: CSSProperties = {
   fontSize: 22,
   fontWeight: "bold",
@@ -752,4 +1094,89 @@ const vsText: CSSProperties = {
   color: "#60a5fa",
   fontWeight: "bold",
   margin: "10px 0",
+};
+
+const modalOverlay: CSSProperties = {
+  position: "fixed",
+  inset: 0,
+  background: "rgba(2, 6, 23, 0.85)",
+  zIndex: 9999,
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  padding: 20,
+};
+
+const modalBox: CSSProperties = {
+  width: "min(1200px, 95vw)",
+  maxHeight: "88vh",
+  overflowY: "auto",
+  background: "#1e293b",
+  border: "1px solid #475569",
+  borderRadius: 18,
+  padding: 25,
+  boxShadow: "0 25px 80px rgba(0,0,0,0.45)",
+};
+
+const closeButton: CSSProperties = {
+  padding: "12px 18px",
+  background: "#dc2626",
+  color: "white",
+  border: "none",
+  borderRadius: 10,
+  cursor: "pointer",
+  fontWeight: "bold",
+};
+
+const participantsSummary: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns:
+    "repeat(auto-fit, minmax(180px, 1fr))",
+  gap: 15,
+  marginBottom: 20,
+};
+
+const participantsGrid: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns:
+    "repeat(auto-fit, minmax(360px, 1fr))",
+  gap: 20,
+};
+
+const teamList: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns:
+    "repeat(auto-fit, minmax(220px, 1fr))",
+  gap: 10,
+};
+
+const participantRow: CSSProperties = {
+  background: "#0f172a",
+  border: "1px solid #334155",
+  borderRadius: 10,
+  padding: 10,
+  display: "flex",
+  gap: 10,
+  alignItems: "center",
+};
+
+const participantNumber: CSSProperties = {
+  width: 28,
+  height: 28,
+  borderRadius: 999,
+  background: "#334155",
+  color: "white",
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  fontWeight: "bold",
+  fontSize: 13,
+};
+
+const emptyParticipants: CSSProperties = {
+  background: "#0f172a",
+  border: "1px solid #334155",
+  borderRadius: 10,
+  padding: 14,
+  color: "#94a3b8",
 };
