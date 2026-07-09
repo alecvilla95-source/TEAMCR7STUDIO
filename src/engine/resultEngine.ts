@@ -4,15 +4,16 @@ export function applyResult(
   fixture: Match[],
   matchId: number,
   scoreA: number,
-  scoreB: number
+  scoreB: number,
+  penaltyA?: number,
+  penaltyB?: number
 ): Match[] {
-
-  const copy = fixture.map(match => ({
+  const copy = fixture.map((match) => ({
     ...match,
   }));
 
   const current = copy.find(
-    match => match.id === matchId
+    (match) => match.id === matchId
   );
 
   if (!current) return copy;
@@ -20,12 +21,37 @@ export function applyResult(
   current.scoreA = scoreA;
   current.scoreB = scoreB;
 
+  current.penaltyA = penaltyA;
+  current.penaltyB = penaltyB;
+
   current.status = "FINISHED";
 
-  const winner =
-    scoreA > scoreB
-      ? current.teamA
-      : current.teamB;
+  let winner = null;
+
+  if (scoreA > scoreB) {
+    winner = current.teamA;
+  }
+
+  if (scoreB > scoreA) {
+    winner = current.teamB;
+  }
+
+  if (scoreA === scoreB) {
+    if (
+      penaltyA === undefined ||
+      penaltyB === undefined ||
+      penaltyA === penaltyB
+    ) {
+      throw new Error(
+        "Debe ingresar penales válidos para definir el ganador."
+      );
+    }
+
+    winner =
+      penaltyA > penaltyB
+        ? current.teamA
+        : current.teamB;
+  }
 
   current.winner = winner;
 
@@ -34,29 +60,22 @@ export function applyResult(
     current.nextSlot &&
     winner
   ) {
-
     const next = copy.find(
-      match => match.id === current.nextMatchId
+      (match) => match.id === current.nextMatchId
     );
 
     if (next) {
-
       if (current.nextSlot === "A") {
         next.teamA = winner;
       } else {
         next.teamB = winner;
       }
 
-      // Cuando ambos equipos estén definidos,
-      // el partido queda listo para jugar.
       if (next.teamA && next.teamB) {
         next.status = "PENDING";
       }
-
     }
-
   }
 
   return copy;
-
 }

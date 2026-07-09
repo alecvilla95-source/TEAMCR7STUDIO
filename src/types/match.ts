@@ -6,7 +6,6 @@ export type MatchStatus =
   | "FINISHED";
 
 export interface Match {
-
   id: number;
 
   round: number;
@@ -25,6 +24,10 @@ export interface Match {
 
   scoreB: number;
 
+  penaltyA?: number;
+
+  penaltyB?: number;
+
   winner: Team | null;
 
   status: MatchStatus;
@@ -36,5 +39,4 @@ export interface Match {
   sourceMatchA?: number | null;
 
   sourceMatchB?: number | null;
-
 }

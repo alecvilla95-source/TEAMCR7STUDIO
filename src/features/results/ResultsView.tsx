@@ -41,6 +41,10 @@ export default function ResultsView() {
     Record<number, { a: number; b: number }>
   >({});
 
+  const [penalties, setPenalties] = useState<
+    Record<number, { a: number; b: number }>
+  >({});
+
   function getScore(
     matchId: number,
     team: "a" | "b"
@@ -56,6 +60,17 @@ export default function ResultsView() {
     }
 
     return scores[matchId]?.b ?? match.scoreB;
+  }
+
+  function getPenalty(
+    matchId: number,
+    team: "a" | "b"
+  ) {
+    if (team === "a") {
+      return penalties[matchId]?.a ?? 0;
+    }
+
+    return penalties[matchId]?.b ?? 0;
   }
 
   function updateScore(
@@ -108,6 +123,32 @@ export default function ResultsView() {
     }
   }
 
+  function updatePenalty(
+    matchId: number,
+    team: "a" | "b",
+    value: number
+  ) {
+    const cleanValue = Math.max(
+      0,
+      Number.isNaN(value) ? 0 : value
+    );
+
+    setPenalties((currentPenalties) => {
+      const previous = currentPenalties[matchId] ?? {
+        a: 0,
+        b: 0,
+      };
+
+      return {
+        ...currentPenalties,
+        [matchId]: {
+          ...previous,
+          [team]: cleanValue,
+        },
+      };
+    });
+  }
+
   function addGoal(
     matchId: number,
     team: "a" | "b"
@@ -140,6 +181,38 @@ export default function ResultsView() {
     );
   }
 
+  function addPenalty(
+    matchId: number,
+    team: "a" | "b"
+  ) {
+    const current = getPenalty(
+      matchId,
+      team
+    );
+
+    updatePenalty(
+      matchId,
+      team,
+      current + 1
+    );
+  }
+
+  function removePenalty(
+    matchId: number,
+    team: "a" | "b"
+  ) {
+    const current = getPenalty(
+      matchId,
+      team
+    );
+
+    updatePenalty(
+      matchId,
+      team,
+      Math.max(0, current - 1)
+    );
+  }
+
   function saveResult(matchId: number) {
     const currentMatch = fixture.find(
       (match) => match.id === matchId
@@ -160,38 +233,60 @@ export default function ResultsView() {
       b: currentMatch.scoreB,
     };
 
+    const penaltyResult =
+      result.a === result.b
+        ? penalties[matchId]
+        : undefined;
+
     if (result.a === result.b) {
-      alert("No se permiten empates.");
-      return;
+      if (!penaltyResult) {
+        alert("El partido está empatado. Ingrese los penales.");
+        return;
+      }
+
+      if (penaltyResult.a === penaltyResult.b) {
+        alert("Los penales no pueden quedar empatados.");
+        return;
+      }
     }
 
-    const updatedMatches = applyResult(
-      fixture,
-      matchId,
-      result.a,
-      result.b
-    );
+    try {
+      const updatedMatches = applyResult(
+        fixture,
+        matchId,
+        result.a,
+        result.b,
+        penaltyResult?.a,
+        penaltyResult?.b
+      );
 
-    const finishedMatch = updatedMatches.find(
-      (match) => match.id === matchId
-    );
+      const finishedMatch = updatedMatches.find(
+        (match) => match.id === matchId
+      );
 
-    if (
-      finishedMatch &&
-      finishedMatch.winner &&
-      !finishedMatch.nextMatchId
-    ) {
-      setChampion(finishedMatch.winner);
-      alert(`🏆 Campeón: ${finishedMatch.winner.name}`);
+      if (
+        finishedMatch &&
+        finishedMatch.winner &&
+        !finishedMatch.nextMatchId
+      ) {
+        setChampion(finishedMatch.winner);
+        alert(`🏆 Campeón: ${finishedMatch.winner.name}`);
+      }
+
+      pauseTimer();
+
+      if (activeMatchId === matchId) {
+        setActiveMatchId(null);
+      }
+
+      setFixture(updatedMatches);
+    } catch (error) {
+      if (error instanceof Error) {
+        alert(error.message);
+      } else {
+        alert("No se pudo guardar el resultado.");
+      }
     }
-
-    pauseTimer();
-
-    if (activeMatchId === matchId) {
-      setActiveMatchId(null);
-    }
-
-    setFixture(updatedMatches);
   }
 
   function showInOBS(matchId: number) {
@@ -353,6 +448,14 @@ export default function ResultsView() {
         const active =
           activeMatchId === match.id;
 
+        const scoreA = getScore(match.id, "a");
+        const scoreB = getScore(match.id, "b");
+
+        const showPenalties =
+          ready &&
+          !finished &&
+          scoreA === scoreB;
+
         return (
           <div
             key={match.id}
@@ -430,7 +533,7 @@ export default function ResultsView() {
                   type="number"
                   min={0}
                   disabled={finished || !ready}
-                  value={getScore(match.id, "a")}
+                  value={scoreA}
                   onChange={(e) =>
                     updateScore(
                       match.id,
@@ -467,7 +570,7 @@ export default function ResultsView() {
                   type="number"
                   min={0}
                   disabled={finished || !ready}
-                  value={getScore(match.id, "b")}
+                  value={scoreB}
                   onChange={(e) =>
                     updateScore(
                       match.id,
@@ -487,6 +590,123 @@ export default function ResultsView() {
                 </button>
               </div>
             </div>
+
+            {showPenalties && (
+              <div
+                style={{
+                  marginTop: 20,
+                  background: "#0f172a",
+                  border: "1px solid #facc15",
+                  borderRadius: 12,
+                  padding: 15,
+                }}
+              >
+                <strong
+                  style={{
+                    color: "#facc15",
+                  }}
+                >
+                  ⚽ Definir por penales
+                </strong>
+
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "1fr auto",
+                    gap: 15,
+                    marginTop: 15,
+                    alignItems: "center",
+                  }}
+                >
+                  <span>
+                    {match.teamA?.name}
+                  </span>
+
+                  <div style={scoreControls}>
+                    <button
+                      onClick={() => removePenalty(match.id, "a")}
+                      style={scoreButton}
+                    >
+                      -
+                    </button>
+
+                    <input
+                      type="number"
+                      min={0}
+                      value={getPenalty(match.id, "a")}
+                      onChange={(e) =>
+                        updatePenalty(
+                          match.id,
+                          "a",
+                          Number(e.target.value)
+                        )
+                      }
+                      style={scoreInput}
+                    />
+
+                    <button
+                      onClick={() => addPenalty(match.id, "a")}
+                      style={scoreButton}
+                    >
+                      +
+                    </button>
+                  </div>
+
+                  <span>
+                    {match.teamB?.name}
+                  </span>
+
+                  <div style={scoreControls}>
+                    <button
+                      onClick={() => removePenalty(match.id, "b")}
+                      style={scoreButton}
+                    >
+                      -
+                    </button>
+
+                    <input
+                      type="number"
+                      min={0}
+                      value={getPenalty(match.id, "b")}
+                      onChange={(e) =>
+                        updatePenalty(
+                          match.id,
+                          "b",
+                          Number(e.target.value)
+                        )
+                      }
+                      style={scoreInput}
+                    />
+
+                    <button
+                      onClick={() => addPenalty(match.id, "b")}
+                      style={scoreButton}
+                    >
+                      +
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {finished && (
+              <div
+                style={{
+                  marginTop: 15,
+                  color: "#bbf7d0",
+                  fontWeight: "bold",
+                }}
+              >
+                Resultado final: {match.scoreA} - {match.scoreB}
+                {match.penaltyA !== undefined &&
+                  match.penaltyB !== undefined && (
+                    <>
+                      {" "}
+                      | Penales: {match.penaltyA} - {match.penaltyB}
+                    </>
+                  )}
+              </div>
+            )}
 
             {active && !finished && (
               <div
