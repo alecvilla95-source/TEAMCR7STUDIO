@@ -10,6 +10,8 @@ import { useFixture } from "../../store/fixtureStore";
 import { useChampion } from "../../store/championStore";
 import { useOverlay } from "../../store/overlayStore";
 import { useTimer } from "../../store/timerStore";
+import { usePlayers } from "../../store/playerStore";
+import { useGoals } from "../../store/goalStore";
 
 import type {
   TournamentMode,
@@ -43,6 +45,10 @@ export default function TournamentForm() {
   const { setActiveMatchId } = useOverlay();
 
   const { resetTimer } = useTimer();
+
+  const { clearPlayers } = usePlayers();
+
+  const { clearGoals } = useGoals();
 
   const [name, setName] = useState("");
 
@@ -120,6 +126,10 @@ export default function TournamentForm() {
     setChampion(null);
 
     setActiveMatchId(null);
+
+    clearPlayers();
+
+    clearGoals();
 
     resetTimer(duration * 60);
 
