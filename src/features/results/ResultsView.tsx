@@ -53,13 +53,47 @@ export default function ResultsView() {
         [team]: value,
       },
     });
+
+    if (activeMatchId === matchId) {
+      const updatedFixture = fixture.map((match) => {
+        if (match.id !== matchId) return match;
+
+        return {
+          ...match,
+          scoreA:
+            team === "a"
+              ? value
+              : match.scoreA,
+          scoreB:
+            team === "b"
+              ? value
+              : match.scoreB,
+        };
+      });
+
+      setFixture(updatedFixture);
+    }
   }
 
   function saveResult(matchId: number) {
-    const result = scores[matchId];
+    const currentMatch = fixture.find(
+      (match) => match.id === matchId
+    );
 
-    if (!result) {
-      alert("Ingrese el resultado.");
+    const result =
+      scores[matchId] ??
+      {
+        a: currentMatch?.scoreA ?? 0,
+        b: currentMatch?.scoreB ?? 0,
+      };
+
+    if (!currentMatch) {
+      alert("No se encontró el partido.");
+      return;
+    }
+
+    if (!currentMatch.teamA || !currentMatch.teamB) {
+      alert("Este partido aún no está listo.");
       return;
     }
 
@@ -125,9 +159,10 @@ export default function ResultsView() {
           style={{
             fontSize: 42,
             fontWeight: "bold",
-            color: secondsLeft <= 10
-              ? "#ef4444"
-              : "#60a5fa",
+            color:
+              secondsLeft <= 10
+                ? "#ef4444"
+                : "#60a5fa",
             marginBottom: 15,
           }}
         >
@@ -263,13 +298,17 @@ export default function ResultsView() {
                 display: "flex",
                 gap: 15,
                 marginTop: 15,
+                alignItems: "center",
               }}
             >
               <input
                 type="number"
                 min={0}
                 disabled={finished || !ready}
-                value={scores[match.id]?.a ?? match.scoreA}
+                value={
+                  scores[match.id]?.a ??
+                  match.scoreA
+                }
                 onChange={(e) =>
                   updateScore(
                     match.id,
@@ -277,13 +316,26 @@ export default function ResultsView() {
                     Number(e.target.value)
                   )
                 }
+                style={scoreInput}
               />
+
+              <span
+                style={{
+                  fontWeight: "bold",
+                  color: "#94a3b8",
+                }}
+              >
+                -
+              </span>
 
               <input
                 type="number"
                 min={0}
                 disabled={finished || !ready}
-                value={scores[match.id]?.b ?? match.scoreB}
+                value={
+                  scores[match.id]?.b ??
+                  match.scoreB
+                }
                 onChange={(e) =>
                   updateScore(
                     match.id,
@@ -291,7 +343,19 @@ export default function ResultsView() {
                     Number(e.target.value)
                   )
                 }
+                style={scoreInput}
               />
+
+              {active && !finished && (
+                <span
+                  style={{
+                    color: "#facc15",
+                    fontWeight: "bold",
+                  }}
+                >
+                  Marcador en vivo
+                </span>
+              )}
             </div>
 
             <div
@@ -363,6 +427,16 @@ export default function ResultsView() {
     </div>
   );
 }
+
+const scoreInput: React.CSSProperties = {
+  width: 70,
+  padding: 10,
+  fontSize: 20,
+  fontWeight: "bold",
+  textAlign: "center",
+  borderRadius: 8,
+  border: "1px solid #334155",
+};
 
 const greenButton: React.CSSProperties = {
   padding: "12px 18px",
