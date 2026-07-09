@@ -4,6 +4,8 @@ import {
   type CSSProperties,
 } from "react";
 
+import { useLogo } from "../../store/logoStore";
+
 const STORAGE_PREFIX = "teamcr7studio_";
 
 interface BackupFile {
@@ -69,13 +71,21 @@ export default function SettingsView() {
   const fileInputRef =
     useRef<HTMLInputElement>(null);
 
+  const logoInputRef =
+    useRef<HTMLInputElement>(null);
+
+  const {
+    logoDataUrl,
+    setLogoDataUrl,
+  } = useLogo();
+
   const [lastAction, setLastAction] =
     useState("");
 
   function exportBackup() {
     const backup: BackupFile = {
       app: "TEAMCR7STUDIO",
-      version: 2,
+      version: 3,
       exportedAt: new Date().toISOString(),
       data: getAllStoredData(),
     };
@@ -119,7 +129,7 @@ export default function SettingsView() {
       }
 
       const confirmRestore = window.confirm(
-        "Esto reemplazará el campeonato actual, equipos, fixture, jugadores y goleadores. ¿Deseas continuar?"
+        "Esto reemplazará el campeonato actual, equipos, fixture, jugadores, goleadores y logo. ¿Deseas continuar?"
       );
 
       if (!confirmRestore) return;
@@ -148,7 +158,7 @@ export default function SettingsView() {
 
   function clearAll() {
     const confirmClear = window.confirm(
-      "Esto borrará campeonato, equipos, fixture, jugadores, goleadores y configuración guardada. ¿Deseas continuar?"
+      "Esto borrará campeonato, equipos, fixture, jugadores, goleadores, logo y configuración guardada. ¿Deseas continuar?"
     );
 
     if (!confirmClear) return;
@@ -160,6 +170,65 @@ export default function SettingsView() {
     );
 
     window.location.reload();
+  }
+
+  async function uploadLogo(
+    event: React.ChangeEvent<HTMLInputElement>
+  ) {
+    const file = event.target.files?.[0];
+
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      alert("Debe seleccionar una imagen.");
+      event.target.value = "";
+      return;
+    }
+
+    const maxSizeMb = 2;
+
+    if (file.size > maxSizeMb * 1024 * 1024) {
+      alert(
+        `El logo pesa demasiado. Usa una imagen menor a ${maxSizeMb} MB.`
+      );
+
+      event.target.value = "";
+      return;
+    }
+
+    const reader = new FileReader();
+
+    reader.onload = () => {
+      const result = String(reader.result ?? "");
+
+      setLogoDataUrl(result);
+
+      setLastAction(
+        "Logo guardado correctamente."
+      );
+    };
+
+    reader.onerror = () => {
+      alert("No se pudo leer el logo.");
+    };
+
+    reader.readAsDataURL(file);
+
+    event.target.value = "";
+  }
+
+  function removeLogo() {
+    const confirmRemove = window.confirm(
+      "¿Deseas quitar el logo guardado?"
+    );
+
+    if (!confirmRemove) return;
+
+    setLogoDataUrl(null);
+
+    setLastAction(
+      "Logo eliminado correctamente."
+    );
   }
 
   return (
@@ -179,7 +248,7 @@ export default function SettingsView() {
             fontSize: 34,
           }}
         >
-          Backup y Restauración
+          Backup, Logo y Restauración
         </h1>
 
         <p
@@ -188,12 +257,71 @@ export default function SettingsView() {
             marginBottom: 0,
           }}
         >
-          Guarda una copia completa del campeonato, incluyendo equipos,
-          fixture, resultados, jugadores y goleadores.
+          Guarda una copia completa del campeonato y configura el logo
+          que aparecerá en las fichas de jugadores.
         </p>
       </div>
 
       <div style={grid}>
+        <div style={card}>
+          <h2
+            style={{
+              marginTop: 0,
+            }}
+          >
+            🖼 Logo del Campeonato
+          </h2>
+
+          <p style={mutedText}>
+            Este logo aparecerá en las fichas PDF/impresión de jugadores.
+          </p>
+
+          <div style={logoPreviewBox}>
+            {logoDataUrl ? (
+              <img
+                src={logoDataUrl}
+                alt="Logo del campeonato"
+                style={logoPreview}
+              />
+            ) : (
+              <div style={logoPlaceholder}>
+                SIN LOGO
+              </div>
+            )}
+          </div>
+
+          <input
+            ref={logoInputRef}
+            type="file"
+            accept="image/*"
+            style={{
+              display: "none",
+            }}
+            onChange={uploadLogo}
+          />
+
+          <button
+            onClick={() =>
+              logoInputRef.current?.click()
+            }
+            style={primaryButton}
+          >
+            🖼 SUBIR LOGO
+          </button>
+
+          {logoDataUrl && (
+            <button
+              onClick={removeLogo}
+              style={{
+                ...dangerButton,
+                marginTop: 12,
+              }}
+            >
+              QUITAR LOGO
+            </button>
+          )}
+        </div>
+
         <div style={card}>
           <h2
             style={{
@@ -215,6 +343,7 @@ export default function SettingsView() {
             <li>Jugadores registrados</li>
             <li>Goleadores y goleadoras</li>
             <li>Campeones</li>
+            <li>Logo del campeonato</li>
           </ul>
 
           <button
@@ -325,6 +454,30 @@ const mutedText: CSSProperties = {
 const list: CSSProperties = {
   color: "#cbd5e1",
   lineHeight: 1.8,
+};
+
+const logoPreviewBox: CSSProperties = {
+  width: "100%",
+  height: 180,
+  background: "#0f172a",
+  border: "1px solid #334155",
+  borderRadius: 12,
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  marginBottom: 16,
+  overflow: "hidden",
+};
+
+const logoPreview: CSSProperties = {
+  maxWidth: "100%",
+  maxHeight: "100%",
+  objectFit: "contain",
+};
+
+const logoPlaceholder: CSSProperties = {
+  color: "#94a3b8",
+  fontWeight: "bold",
 };
 
 const primaryButton: CSSProperties = {

@@ -15,6 +15,7 @@ import { OverlayProvider } from "./store/overlayStore";
 import { TimerProvider } from "./store/timerStore";
 import { PlayerProvider } from "./store/playerStore";
 import { GoalProvider } from "./store/goalStore";
+import { LogoProvider } from "./store/logoStore";
 
 ReactDOM.createRoot(
   document.getElementById("root")!
@@ -29,7 +30,9 @@ ReactDOM.createRoot(
                 <TimerProvider>
                   <PlayerProvider>
                     <GoalProvider>
-                      <App />
+                      <LogoProvider>
+                        <App />
+                      </LogoProvider>
                     </GoalProvider>
                   </PlayerProvider>
                 </TimerProvider>
