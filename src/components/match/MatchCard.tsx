@@ -1,3 +1,4 @@
+import type React from "react";
 import type { Match } from "../../types/match";
 
 interface Props {
@@ -5,11 +6,32 @@ interface Props {
 }
 
 export default function MatchCard({ match }: Props) {
+  const finished =
+    match.status === "FINISHED";
+
+  const playing =
+    match.status === "PLAYING";
+
+  const hasScore =
+    finished ||
+    match.scoreA > 0 ||
+    match.scoreB > 0;
+
+  const hasPenalties =
+    match.penaltyA !== undefined &&
+    match.penaltyB !== undefined;
+
   function teamLabel(
     team: typeof match.teamA,
-    sourceMatch?: number | null
+    sourceMatch: number | null | undefined
   ) {
-    if (team) return team.name;
+    if (team) {
+      return team.name;
+    }
+
+    if (match.round === 1) {
+      return "Por definir";
+    }
 
     if (sourceMatch) {
       return `🏆 Ganador Partido ${sourceMatch}`;
@@ -18,29 +40,46 @@ export default function MatchCard({ match }: Props) {
     return "Por definir";
   }
 
+  function statusLabel() {
+    if (finished) return "FINALIZADO";
+    if (playing) return "EN JUEGO";
+    return "PENDIENTE";
+  }
+
+  function statusColor() {
+    if (finished) return "#16a34a";
+    if (playing) return "#22c55e";
+    return "#facc15";
+  }
+
   return (
     <div
       style={{
         background: "#1e293b",
-        borderRadius: 12,
-        padding: 18,
+        borderRadius: 14,
+        padding: 20,
         marginBottom: 18,
-        border:
-          match.status === "FINISHED"
-            ? "2px solid #16a34a"
-            : "1px solid #334155",
+        border: finished
+          ? "2px solid #16a34a"
+          : playing
+          ? "2px solid #22c55e"
+          : "1px solid #334155",
       }}
     >
       <div
         style={{
           display: "flex",
           justifyContent: "space-between",
-          marginBottom: 12,
+          marginBottom: 16,
           color: "#94a3b8",
           fontSize: 14,
+          gap: 15,
+          flexWrap: "wrap",
         }}
       >
-        <span>Partido {match.id}</span>
+        <span>
+          <strong>Partido {match.id}</strong>
+        </span>
 
         <span>
           🕒 {match.time || "--:--"} | 🏟 Cancha {match.court || "-"}
@@ -49,48 +88,110 @@ export default function MatchCard({ match }: Props) {
 
       <div
         style={{
-          fontSize: 18,
-          fontWeight: "bold",
+          display: "grid",
+          gridTemplateColumns: hasScore ? "1fr 70px" : "1fr",
+          gap: 15,
+          alignItems: "center",
         }}
       >
-        {teamLabel(match.teamA, match.sourceMatchA)}
+        <div style={teamName}>
+          {teamLabel(match.teamA, match.sourceMatchA)}
+        </div>
+
+        {hasScore && (
+          <div style={scoreBox}>
+            {match.scoreA}
+          </div>
+        )}
+
+        <div style={teamName}>
+          {teamLabel(match.teamB, match.sourceMatchB)}
+        </div>
+
+        {hasScore && (
+          <div style={scoreBox}>
+            {match.scoreB}
+          </div>
+        )}
       </div>
 
       <div
         style={{
           textAlign: "center",
-          margin: "10px 0",
           color: "#60a5fa",
           fontWeight: "bold",
+          margin: "16px 0 0",
         }}
       >
         VS
       </div>
 
-      <div
-        style={{
-          fontSize: 18,
-          fontWeight: "bold",
-        }}
-      >
-        {teamLabel(match.teamB, match.sourceMatchB)}
-      </div>
-
-      {match.status === "FINISHED" && (
+      {hasPenalties && (
         <div
           style={{
             marginTop: 15,
+            background: "#713f12",
+            color: "#fef3c7",
             padding: 10,
-            background: "#14532d",
-            color: "#bbf7d0",
             borderRadius: 8,
-            fontWeight: "bold",
             textAlign: "center",
+            fontWeight: "bold",
           }}
         >
-          🏆 Ganador: {match.winner?.name}
+          ⚽ Penales: {match.penaltyA} - {match.penaltyB}
         </div>
       )}
+
+      <div
+        style={{
+          marginTop: 15,
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          gap: 12,
+          flexWrap: "wrap",
+        }}
+      >
+        <span
+          style={{
+            background: statusColor(),
+            color: "#111827",
+            padding: "6px 10px",
+            borderRadius: 999,
+            fontSize: 12,
+            fontWeight: "bold",
+          }}
+        >
+          {statusLabel()}
+        </span>
+
+        {finished && (
+          <span
+            style={{
+              color: "#bbf7d0",
+              fontWeight: "bold",
+            }}
+          >
+            🏆 Ganador: {match.winner?.name}
+          </span>
+        )}
+      </div>
     </div>
   );
 }
+
+const teamName: React.CSSProperties = {
+  fontSize: 18,
+  fontWeight: "bold",
+};
+
+const scoreBox: React.CSSProperties = {
+  background: "#0f172a",
+  border: "1px solid #334155",
+  borderRadius: 10,
+  padding: "8px 0",
+  textAlign: "center",
+  fontSize: 24,
+  fontWeight: "bold",
+  color: "#60a5fa",
+};
