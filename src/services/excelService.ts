@@ -3,10 +3,19 @@ import * as XLSX from "xlsx";
 import type { Team } from "../types/team";
 import type { Player } from "../types/player";
 
+export interface ImportedPlayerSheet {
+  team: Team;
+  players: Player[];
+  delegate1: string;
+  delegate2: string;
+}
+
 export interface ImportedTeamPlayers {
   team: Team;
   players: Player[];
   sheetName: string;
+  delegate1: string;
+  delegate2: string;
 }
 
 function cleanText(value: unknown) {
@@ -18,6 +27,7 @@ function normalizeText(value: string) {
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .toUpperCase()
+    .replace(/[:]/g, "")
     .replace(/\s+/g, " ")
     .trim();
 }
@@ -70,6 +80,14 @@ function generateId() {
   return `${Date.now()}-${Math.random()}`;
 }
 
+function getFootballCategoryLabel(team: Team) {
+  if (team.category === "WOMEN") {
+    return "FÚTBOL FEMENINO";
+  }
+
+  return "FÚTBOL MASCULINO";
+}
+
 function getCategoryLabel(team: Team) {
   if (team.category === "WOMEN") {
     return "MUJERES";
@@ -120,57 +138,188 @@ function downloadWorkbook(
 function createPlayerTemplateSheet({
   tournamentName,
   team,
-  maxPlayers = 25,
+  maxPlayers = 10,
 }: {
   tournamentName: string;
   team: Team;
   maxPlayers?: number;
 }) {
   const rows: Array<Array<string | number>> = [
-    ["FICHA OFICIAL DE JUGADORES", "", "", "", ""],
+    [
+      "",
+      tournamentName,
+      "",
+      "",
+      "",
+    ],
+    [
+      "",
+      "FICHA OFICIAL DE JUGADORES",
+      "",
+      "",
+      "",
+    ],
     [],
-    ["Campeonato", tournamentName, "", "", ""],
-    ["Equipo", team.name, "", "", ""],
-    ["Categoría", getCategoryLabel(team), "", "", ""],
-    ["Cancha", getCourtLabel(team), "", "", ""],
+    [
+      "EQUIPO:",
+      team.name,
+      "",
+      "",
+      "",
+    ],
+    [
+      "DELEGADO 1:",
+      team.delegate1 ?? "",
+      "",
+      "",
+      "",
+    ],
+    [
+      "DELEGADO 2:",
+      team.delegate2 ?? "",
+      "",
+      "",
+      "",
+    ],
+    [
+      "CATEGORIA:",
+      getFootballCategoryLabel(team),
+      "",
+      "",
+      "",
+    ],
+    [
+      "CANCHA:",
+      getCourtLabel(team),
+      "",
+      "",
+      "",
+    ],
     [],
     [
       "N°",
       "APELLIDOS Y NOMBRES",
-      "DOCUMENTO DE IDENTIDAD",
+      "DNI",
       "DORSAL",
       "FIRMA",
     ],
   ];
 
-  for (let index = 1; index <= maxPlayers; index++) {
-    rows.push([index, "", "", "", ""]);
+  for (
+    let index = 1;
+    index <= maxPlayers;
+    index++
+  ) {
+    rows.push([
+      index.toString().padStart(2, "0"),
+      "",
+      "",
+      "",
+      "",
+    ]);
   }
 
   const worksheet = XLSX.utils.aoa_to_sheet(rows);
 
   worksheet["!cols"] = [
-    { wch: 6 },
-    { wch: 35 },
-    { wch: 24 },
-    { wch: 10 },
-    { wch: 24 },
+    {
+      wch: 8,
+    },
+    {
+      wch: 40,
+    },
+    {
+      wch: 20,
+    },
+    {
+      wch: 12,
+    },
+    {
+      wch: 24,
+    },
   ];
 
   worksheet["!merges"] = [
     {
       s: {
         r: 0,
-        c: 0,
+        c: 1,
       },
       e: {
         r: 0,
         c: 4,
       },
     },
+    {
+      s: {
+        r: 1,
+        c: 1,
+      },
+      e: {
+        r: 1,
+        c: 4,
+      },
+    },
+    {
+      s: {
+        r: 3,
+        c: 1,
+      },
+      e: {
+        r: 3,
+        c: 4,
+      },
+    },
+    {
+      s: {
+        r: 4,
+        c: 1,
+      },
+      e: {
+        r: 4,
+        c: 4,
+      },
+    },
+    {
+      s: {
+        r: 5,
+        c: 1,
+      },
+      e: {
+        r: 5,
+        c: 4,
+      },
+    },
+    {
+      s: {
+        r: 6,
+        c: 1,
+      },
+      e: {
+        r: 6,
+        c: 4,
+      },
+    },
+    {
+      s: {
+        r: 7,
+        c: 1,
+      },
+      e: {
+        r: 7,
+        c: 4,
+      },
+    },
   ];
 
   return worksheet;
+}
+
+function getRowsFromSheet(sheet: XLSX.WorkSheet) {
+  return XLSX.utils.sheet_to_json(sheet, {
+    header: 1,
+    defval: "",
+  }) as Array<Array<string | number>>;
 }
 
 function getMetaValue(
@@ -186,16 +335,20 @@ function getMetaValue(
   return cleanText(row?.[1]);
 }
 
-function getCategoryFromMeta(value: string) {
+function getCategoryFromMeta(value: string): Team["category"] {
   const normalized = normalizeText(value);
 
-  if (normalized.includes("MUJER")) {
+  if (
+    normalized.includes("MUJER") ||
+    normalized.includes("FEMENINO")
+  ) {
     return "WOMEN";
   }
 
   if (
     normalized.includes("VARON") ||
-    normalized.includes("HOMBRE")
+    normalized.includes("HOMBRE") ||
+    normalized.includes("MASCULINO")
   ) {
     return "MEN";
   }
@@ -215,21 +368,27 @@ function findTeamForSheet(
   rows: Array<Array<string | number>>,
   teams: Team[]
 ) {
-  const teamName = getMetaValue(rows, "Equipo");
+  const teamName =
+    getMetaValue(rows, "Equipo");
 
-  const categoryText = getMetaValue(rows, "Categoría");
+  const categoryText =
+    getMetaValue(rows, "Categoria");
 
-  const courtText = getMetaValue(rows, "Cancha");
+  const courtText =
+    getMetaValue(rows, "Cancha");
 
-  const category = getCategoryFromMeta(categoryText);
+  const category =
+    getCategoryFromMeta(categoryText);
 
-  const courtNumber = getCourtNumberFromMeta(courtText);
+  const courtNumber =
+    getCourtNumberFromMeta(courtText);
 
   if (!teamName) return null;
 
   let candidates = teams.filter(
     (team) =>
-      normalizeText(team.name) === normalizeText(teamName)
+      normalizeText(team.name) ===
+      normalizeText(teamName)
   );
 
   if (category) {
@@ -247,39 +406,41 @@ function findTeamForSheet(
   return candidates[0] ?? null;
 }
 
-function getRowsFromSheet(sheet: XLSX.WorkSheet) {
-  return XLSX.utils.sheet_to_json(sheet, {
-    header: 1,
-    defval: "",
-  }) as Array<Array<string | number>>;
-}
-
 function parsePlayersFromRows(
   rows: Array<Array<string | number>>,
   team: Team
 ): Player[] {
   const headerIndex = rows.findIndex((row) => {
-    const secondColumn = normalizeText(cleanText(row[1]));
+    const secondColumn =
+      normalizeText(cleanText(row[1]));
 
-    const thirdColumn = normalizeText(cleanText(row[2]));
+    const thirdColumn =
+      normalizeText(cleanText(row[2]));
 
     return (
       secondColumn.includes("NOMBRES") ||
       secondColumn.includes("JUGADOR") ||
+      thirdColumn.includes("DNI") ||
       thirdColumn.includes("DOCUMENTO")
     );
   });
 
-  const startIndex = headerIndex >= 0 ? headerIndex + 1 : 8;
+  const startIndex =
+    headerIndex >= 0
+      ? headerIndex + 1
+      : 10;
 
   return rows
     .slice(startIndex)
     .map((row) => {
-      const name = cleanText(row[1]);
+      const name =
+        cleanText(row[1]);
 
-      const documentId = cleanText(row[2]);
+      const documentId =
+        cleanText(row[2]);
 
-      const jerseyNumber = cleanText(row[3]);
+      const jerseyNumber =
+        cleanText(row[3]);
 
       return {
         id: generateId(),
@@ -303,6 +464,27 @@ function parsePlayersFromRows(
         player.documentId ||
         player.jerseyNumber
     );
+}
+
+function parsePlayerSheet(
+  rows: Array<Array<string | number>>,
+  team: Team
+): ImportedPlayerSheet {
+  const delegate1 =
+    getMetaValue(rows, "Delegado 1");
+
+  const delegate2 =
+    getMetaValue(rows, "Delegado 2");
+
+  const players =
+    parsePlayersFromRows(rows, team);
+
+  return {
+    team,
+    players,
+    delegate1,
+    delegate2,
+  };
 }
 
 export async function importTeamsFromExcel(
@@ -341,7 +523,7 @@ export async function importTeamsFromExcel(
 export function exportPlayerTemplate({
   tournamentName,
   team,
-  maxPlayers = 25,
+  maxPlayers = 10,
 }: {
   tournamentName: string;
   team: Team;
@@ -361,17 +543,21 @@ export function exportPlayerTemplate({
     "Ficha Jugadores"
   );
 
-  const filename = `Ficha_Jugadores_${sanitizeFileName(
-    team.name
-  )}.xlsx`;
+  const filename =
+    `Ficha_Jugadores_${sanitizeFileName(
+      team.name
+    )}.xlsx`;
 
-  downloadWorkbook(workbook, filename);
+  downloadWorkbook(
+    workbook,
+    filename
+  );
 }
 
 export function exportAllPlayerTemplates({
   tournamentName,
   teams,
-  maxPlayers = 25,
+  maxPlayers = 10,
 }: {
   tournamentName: string;
   teams: Team[];
@@ -382,15 +568,24 @@ export function exportAllPlayerTemplates({
   const usedNames = new Set<string>();
 
   const orderedTeams = [...teams].sort((a, b) => {
-    const categoryA = a.category === "WOMEN" ? 2 : 1;
-    const categoryB = b.category === "WOMEN" ? 2 : 1;
+    const categoryA =
+      a.category === "WOMEN" ? 2 : 1;
+
+    const categoryB =
+      b.category === "WOMEN" ? 2 : 1;
 
     if (categoryA !== categoryB) {
       return categoryA - categoryB;
     }
 
-    if ((a.assignedCourt ?? 0) !== (b.assignedCourt ?? 0)) {
-      return (a.assignedCourt ?? 0) - (b.assignedCourt ?? 0);
+    if (
+      (a.assignedCourt ?? 0) !==
+      (b.assignedCourt ?? 0)
+    ) {
+      return (
+        (a.assignedCourt ?? 0) -
+        (b.assignedCourt ?? 0)
+      );
     }
 
     return a.name.localeCompare(b.name);
@@ -403,14 +598,17 @@ export function exportAllPlayerTemplates({
       maxPlayers,
     });
 
-    const prefix = team.category === "WOMEN" ? "M" : "V";
+    const prefix =
+      team.category === "WOMEN" ? "M" : "V";
 
-    const court = team.assignedCourt ?? 0;
+    const court =
+      team.assignedCourt ?? 0;
 
-    const sheetName = getUniqueSheetName(
-      `${prefix}${court}_${team.name}`,
-      usedNames
-    );
+    const sheetName =
+      getUniqueSheetName(
+        `${prefix}${court}_${team.name}`,
+        usedNames
+      );
 
     XLSX.utils.book_append_sheet(
       workbook,
@@ -419,17 +617,21 @@ export function exportAllPlayerTemplates({
     );
   });
 
-  const filename = `Fichas_Jugadores_${sanitizeFileName(
-    tournamentName
-  )}.xlsx`;
+  const filename =
+    `Fichas_Jugadores_${sanitizeFileName(
+      tournamentName
+    )}.xlsx`;
 
-  downloadWorkbook(workbook, filename);
+  downloadWorkbook(
+    workbook,
+    filename
+  );
 }
 
 export async function importPlayersFromExcel(
   file: File,
   team: Team
-): Promise<Player[]> {
+): Promise<ImportedPlayerSheet> {
   const data = await file.arrayBuffer();
 
   const workbook = XLSX.read(data);
@@ -440,7 +642,10 @@ export async function importPlayersFromExcel(
 
   const rows = getRowsFromSheet(sheet);
 
-  return parsePlayersFromRows(rows, team);
+  return parsePlayerSheet(
+    rows,
+    team
+  );
 }
 
 export async function importAllPlayersFromExcel(
@@ -458,16 +663,25 @@ export async function importAllPlayersFromExcel(
 
     const rows = getRowsFromSheet(sheet);
 
-    const team = findTeamForSheet(rows, teams);
+    const team = findTeamForSheet(
+      rows,
+      teams
+    );
 
     if (!team) return;
 
-    const players = parsePlayersFromRows(rows, team);
+    const parsed =
+      parsePlayerSheet(
+        rows,
+        team
+      );
 
     imported.push({
       team,
-      players,
+      players: parsed.players,
       sheetName,
+      delegate1: parsed.delegate1,
+      delegate2: parsed.delegate2,
     });
   });
 

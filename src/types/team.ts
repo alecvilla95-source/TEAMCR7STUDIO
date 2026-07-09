@@ -10,4 +10,8 @@ export interface Team {
   assignedCourt?: number;
 
   category?: TeamCategory;
+
+  delegate1?: string;
+
+  delegate2?: string;
 }

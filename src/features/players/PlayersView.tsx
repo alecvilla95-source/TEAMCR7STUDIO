@@ -28,10 +28,10 @@ function getCategoryColor(team: Team) {
 
 function getCategoryLabel(team: Team) {
   if (team.category === "WOMEN") {
-    return "MUJERES";
+    return "FÚTBOL FEMENINO";
   }
 
-  return "VARONES";
+  return "FÚTBOL MASCULINO";
 }
 
 function getCourtLabel(team: Team) {
@@ -76,14 +76,14 @@ function renderPlayerRows(players: Player[]) {
     players.length > 0
       ? players
       : Array.from({
-          length: 25,
+          length: 10,
         }).map(() => null);
 
   return rows
     .map((player, index) => {
       return `
         <tr>
-          <td>${index + 1}</td>
+          <td>${String(index + 1).padStart(2, "0")}</td>
           <td>${player ? escapeHtml(player.name) : ""}</td>
           <td>${player ? escapeHtml(player.documentId) : ""}</td>
           <td>${player ? escapeHtml(player.jerseyNumber) : ""}</td>
@@ -132,35 +132,75 @@ function buildTeamRosterHtml({
             page-break-after: auto;
           }
 
-          .header {
-            text-align: center;
-            border: 2px solid #111827;
-            padding: 14px;
-            margin-bottom: 18px;
+          .top {
+            display: grid;
+            grid-template-columns: 1fr 2fr 1fr;
+            border: 1px solid #111827;
+            margin-bottom: 0;
           }
 
-          h1 {
+          .logo-box,
+          .title-box,
+          .blank-box {
+            min-height: 115px;
+            border-right: 1px solid #111827;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            padding: 10px;
+          }
+
+          .blank-box {
+            border-right: none;
+          }
+
+          .logo-placeholder {
+            font-weight: bold;
+            font-size: 13px;
+            color: #6b7280;
+          }
+
+          .title-box h1 {
             margin: 0;
-            font-size: 24px;
+            font-size: 22px;
             text-transform: uppercase;
           }
 
-          .info {
+          .title-box h2 {
+            margin: 8px 0 0;
+            font-size: 26px;
+            text-transform: uppercase;
+          }
+
+          table.info {
             width: 100%;
             border-collapse: collapse;
             margin-bottom: 18px;
           }
 
-          .info td {
+          table.info td {
             border: 1px solid #111827;
-            padding: 8px;
-            font-size: 13px;
+            padding: 10px;
+            font-size: 14px;
+            height: 36px;
           }
 
-          .info td:first-child {
-            width: 170px;
+          table.info td:first-child {
+            width: 190px;
             font-weight: bold;
-            background: #e5e7eb;
+            background: #f3f4f6;
+          }
+
+          table.info td:nth-child(2) {
+            font-weight: bold;
+          }
+
+          .category {
+            text-align: center;
+            font-size: 24px;
+            font-weight: bold;
+            text-transform: uppercase;
           }
 
           table.players {
@@ -173,17 +213,19 @@ function buildTeamRosterHtml({
             border: 1px solid #111827;
             padding: 8px;
             font-size: 13px;
-            height: 32px;
+            height: 42px;
           }
 
           table.players th {
-            background: #e5e7eb;
+            background: #f3f4f6;
             text-align: center;
+            font-weight: bold;
           }
 
           table.players td:first-child,
           table.players td:nth-child(4) {
             text-align: center;
+            font-weight: bold;
           }
 
           .footer {
@@ -211,35 +253,48 @@ function buildTeamRosterHtml({
 
       <body>
         <div class="sheet">
-          <div class="header">
-            <h1>Ficha Oficial de Jugadores</h1>
+          <div class="top">
+            <div class="logo-box">
+              <div class="logo-placeholder">
+                LOGO<br />ORGANIZADOR
+              </div>
+            </div>
+
+            <div class="title-box">
+              <div>
+                <h1>${escapeHtml(tournamentName)}</h1>
+                <h2>Ficha de jugadores</h2>
+              </div>
+            </div>
+
+            <div class="blank-box"></div>
           </div>
 
           <table class="info">
             <tbody>
               <tr>
-                <td>Campeonato</td>
-                <td>${escapeHtml(tournamentName)}</td>
-              </tr>
-
-              <tr>
-                <td>Equipo</td>
+                <td>EQUIPO:</td>
                 <td>${escapeHtml(team.name)}</td>
               </tr>
 
               <tr>
-                <td>Categoría</td>
-                <td>${escapeHtml(getCategoryLabel(team))}</td>
+                <td>DELEGADO 1:</td>
+                <td>${escapeHtml(team.delegate1 ?? "")}</td>
               </tr>
 
               <tr>
-                <td>Cancha</td>
+                <td>DELEGADO 2:</td>
+                <td>${escapeHtml(team.delegate2 ?? "")}</td>
+              </tr>
+
+              <tr>
+                <td>CATEGORIA:</td>
+                <td class="category">${escapeHtml(getCategoryLabel(team))}</td>
+              </tr>
+
+              <tr>
+                <td>CANCHA:</td>
                 <td>${escapeHtml(getCourtLabel(team))}</td>
-              </tr>
-
-              <tr>
-                <td>Fecha de impresión</td>
-                <td>${escapeHtml(new Date().toLocaleString())}</td>
               </tr>
             </tbody>
           </table>
@@ -247,11 +302,11 @@ function buildTeamRosterHtml({
           <table class="players">
             <thead>
               <tr>
-                <th style="width: 45px;">N°</th>
-                <th>Apellidos y nombres</th>
-                <th style="width: 180px;">Documento de identidad</th>
-                <th style="width: 80px;">Dorsal</th>
-                <th style="width: 170px;">Firma</th>
+                <th style="width: 55px;">N°</th>
+                <th>APELLIDOS Y NOMBRES</th>
+                <th style="width: 170px;">DNI</th>
+                <th style="width: 85px;">DORSAL</th>
+                <th style="width: 150px;">FIRMA</th>
               </tr>
             </thead>
 
@@ -326,10 +381,9 @@ function buildAllRostersHtml({
         players: teamPlayers,
         autoPrint: false,
       })
-        .replace("<body>", "")
+        .replace(/<!doctype html>[\s\S]*?<body>/, "")
         .replace("</body>", "")
-        .replace("</html>", "")
-        .replace(/<!doctype html>[\s\S]*?<body>/, "");
+        .replace("</html>", "");
     })
     .join("");
 
@@ -360,35 +414,75 @@ function buildAllRostersHtml({
             page-break-after: auto;
           }
 
-          .header {
-            text-align: center;
-            border: 2px solid #111827;
-            padding: 14px;
-            margin-bottom: 18px;
+          .top {
+            display: grid;
+            grid-template-columns: 1fr 2fr 1fr;
+            border: 1px solid #111827;
+            margin-bottom: 0;
           }
 
-          h1 {
+          .logo-box,
+          .title-box,
+          .blank-box {
+            min-height: 115px;
+            border-right: 1px solid #111827;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            padding: 10px;
+          }
+
+          .blank-box {
+            border-right: none;
+          }
+
+          .logo-placeholder {
+            font-weight: bold;
+            font-size: 13px;
+            color: #6b7280;
+          }
+
+          .title-box h1 {
             margin: 0;
-            font-size: 24px;
+            font-size: 22px;
             text-transform: uppercase;
           }
 
-          .info {
+          .title-box h2 {
+            margin: 8px 0 0;
+            font-size: 26px;
+            text-transform: uppercase;
+          }
+
+          table.info {
             width: 100%;
             border-collapse: collapse;
             margin-bottom: 18px;
           }
 
-          .info td {
+          table.info td {
             border: 1px solid #111827;
-            padding: 8px;
-            font-size: 13px;
+            padding: 10px;
+            font-size: 14px;
+            height: 36px;
           }
 
-          .info td:first-child {
-            width: 170px;
+          table.info td:first-child {
+            width: 190px;
             font-weight: bold;
-            background: #e5e7eb;
+            background: #f3f4f6;
+          }
+
+          table.info td:nth-child(2) {
+            font-weight: bold;
+          }
+
+          .category {
+            text-align: center;
+            font-size: 24px;
+            font-weight: bold;
+            text-transform: uppercase;
           }
 
           table.players {
@@ -401,17 +495,19 @@ function buildAllRostersHtml({
             border: 1px solid #111827;
             padding: 8px;
             font-size: 13px;
-            height: 32px;
+            height: 42px;
           }
 
           table.players th {
-            background: #e5e7eb;
+            background: #f3f4f6;
             text-align: center;
+            font-weight: bold;
           }
 
           table.players td:first-child,
           table.players td:nth-child(4) {
             text-align: center;
+            font-weight: bold;
           }
 
           .footer {
@@ -456,7 +552,7 @@ function buildAllRostersHtml({
 export default function PlayersView() {
   const { tournament } = useTournament();
 
-  const { teams } = useTeams();
+  const { teams, setTeams } = useTeams();
 
   const {
     players,
@@ -482,11 +578,63 @@ export default function PlayersView() {
     (team) => team.category === "WOMEN"
   );
 
+  function updateTeamDelegates(
+    teamId: number,
+    delegate1: string,
+    delegate2: string
+  ) {
+    const nextTeams = teams.map((team) => {
+      if (team.id !== teamId) {
+        return team;
+      }
+
+      return {
+        ...team,
+        delegate1,
+        delegate2,
+      };
+    });
+
+    setTeams(nextTeams);
+  }
+
+  function updateManyTeamDelegates(
+    data: Array<{
+      teamId: number;
+      delegate1: string;
+      delegate2: string;
+    }>
+  ) {
+    const delegateMap = new Map(
+      data.map((item) => [
+        item.teamId,
+        item,
+      ])
+    );
+
+    const nextTeams = teams.map((team) => {
+      const item =
+        delegateMap.get(team.id);
+
+      if (!item) {
+        return team;
+      }
+
+      return {
+        ...team,
+        delegate1: item.delegate1,
+        delegate2: item.delegate2,
+      };
+    });
+
+    setTeams(nextTeams);
+  }
+
   function downloadTemplate(team: Team) {
     exportPlayerTemplate({
       tournamentName: tournament?.name ?? "Campeonato",
       team,
-      maxPlayers: 25,
+      maxPlayers: 10,
     });
   }
 
@@ -499,7 +647,7 @@ export default function PlayersView() {
     exportAllPlayerTemplates({
       tournamentName: tournament?.name ?? "Campeonato",
       teams,
-      maxPlayers: 25,
+      maxPlayers: 10,
     });
   }
 
@@ -538,15 +686,17 @@ export default function PlayersView() {
     if (!file) return;
 
     try {
-      const imported = await importAllPlayersFromExcel(
-        file,
-        teams
-      );
+      const imported =
+        await importAllPlayersFromExcel(
+          file,
+          teams
+        );
 
       if (imported.length === 0) {
         alert(
-          "No se encontró ninguna ficha válida. Asegúrate de no borrar las filas de Equipo, Categoría y Cancha."
+          "No se encontró ninguna ficha válida. Asegúrate de no borrar las filas de Equipo, Delegados, Categoría y Cancha."
         );
+
         return;
       }
 
@@ -566,6 +716,14 @@ export default function PlayersView() {
         ...remainingPlayers,
         ...newPlayers,
       ]);
+
+      updateManyTeamDelegates(
+        imported.map((item) => ({
+          teamId: item.team.id,
+          delegate1: item.delegate1,
+          delegate2: item.delegate2,
+        }))
+      );
 
       alert(
         `${newPlayers.length} jugadores importados en ${imported.length} equipos.`
@@ -588,15 +746,25 @@ export default function PlayersView() {
     if (!file) return;
 
     try {
-      const players = await importPlayersFromExcel(
-        file,
-        team
+      const result =
+        await importPlayersFromExcel(
+          file,
+          team
+        );
+
+      setPlayersForTeam(
+        team.id,
+        result.players
       );
 
-      setPlayersForTeam(team.id, players);
+      updateTeamDelegates(
+        team.id,
+        result.delegate1,
+        result.delegate2
+      );
 
       alert(
-        `${players.length} jugadores importados para ${team.name}.`
+        `${result.players.length} jugadores importados para ${team.name}.`
       );
     } catch {
       alert(
@@ -762,7 +930,8 @@ function TeamSection({
   ) => void;
   onPrint: (team: Team) => void;
 }) {
-  const grouped = groupTeamsByCourt(teams);
+  const grouped =
+    groupTeamsByCourt(teams);
 
   return (
     <section
@@ -797,7 +966,8 @@ function TeamSection({
 
           <div style={teamGrid}>
             {group.teams.map((team) => {
-              const players = getPlayersByTeam(team.id);
+              const players =
+                getPlayersByTeam(team.id);
 
               const expanded =
                 expandedTeamId === team.id;
@@ -893,6 +1063,25 @@ function TeamPlayerCard({
       <p
         style={{
           color: "#94a3b8",
+          marginBottom: 8,
+        }}
+      >
+        Delegado 1:{" "}
+        <strong>{team.delegate1 || "Sin registrar"}</strong>
+      </p>
+
+      <p
+        style={{
+          color: "#94a3b8",
+        }}
+      >
+        Delegado 2:{" "}
+        <strong>{team.delegate2 || "Sin registrar"}</strong>
+      </p>
+
+      <p
+        style={{
+          color: "#94a3b8",
         }}
       >
         Jugadores registrados:{" "}
@@ -973,7 +1162,7 @@ function PlayersTable({
           <tr>
             <th style={thStyle}>N°</th>
             <th style={thStyle}>Jugador</th>
-            <th style={thStyle}>Documento</th>
+            <th style={thStyle}>DNI</th>
             <th style={thStyle}>Dorsal</th>
           </tr>
         </thead>
@@ -982,7 +1171,7 @@ function PlayersTable({
           {players.map((player, index) => (
             <tr key={player.id}>
               <td style={tdStyle}>
-                {index + 1}
+                {String(index + 1).padStart(2, "0")}
               </td>
 
               <td style={tdStyle}>
