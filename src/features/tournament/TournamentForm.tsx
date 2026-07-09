@@ -177,7 +177,7 @@ export default function TournamentForm() {
           </option>
         </select>
 
-        <label>Cantidad de Plazas</label>
+        <label>Cantidad de Plazas por Categoría</label>
 
         <select
           value={teams}
@@ -191,6 +191,7 @@ export default function TournamentForm() {
           <option value={16}>16 Plazas</option>
           <option value={32}>32 Plazas</option>
           <option value={64}>64 Plazas</option>
+          <option value={128}>128 Plazas</option>
         </select>
 
         <div style={sectionBox}>
