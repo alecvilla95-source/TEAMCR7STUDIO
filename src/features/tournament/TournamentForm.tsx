@@ -1,7 +1,15 @@
-import { useState } from "react";
+import {
+  useState,
+  type CSSProperties,
+} from "react";
 
 import { useApp } from "../../store/appStore";
 import { useTournament } from "../../store/tournamentStore";
+import { useTeams } from "../../store/teamStore";
+import { useFixture } from "../../store/fixtureStore";
+import { useChampion } from "../../store/championStore";
+import { useOverlay } from "../../store/overlayStore";
+import { useTimer } from "../../store/timerStore";
 
 import type { TournamentMode } from "../../types/tournament";
 
@@ -10,12 +18,22 @@ export default function TournamentForm() {
 
   const { createTournament } = useTournament();
 
+  const { setTeams } = useTeams();
+
+  const { setFixture } = useFixture();
+
+  const { setChampion } = useChampion();
+
+  const { setActiveMatchId } = useOverlay();
+
+  const { resetTimer } = useTimer();
+
   const [name, setName] = useState("");
 
   const [mode, setMode] =
     useState<TournamentMode>("ELIMINATION");
 
-  const [teams, setTeams] = useState(16);
+  const [teams, setTeamsCount] = useState(16);
 
   const [courts, setCourts] = useState(1);
 
@@ -40,29 +58,48 @@ export default function TournamentForm() {
       duration,
     });
 
+    setTeams([]);
+
+    setFixture([]);
+
+    setChampion(null);
+
+    setActiveMatchId(null);
+
+    resetTimer(duration * 60);
+
     setPage("teams");
   }
 
   return (
     <div style={{ maxWidth: 700 }}>
-
       <h2>Nuevo Campeonato</h2>
+
+      <p
+        style={{
+          color: "#94a3b8",
+          marginTop: 10,
+          marginBottom: 30,
+        }}
+      >
+        Al crear un nuevo campeonato se limpiarán los equipos,
+        fixture, resultados, campeón, OBS y cronómetro anteriores.
+      </p>
 
       <div
         style={{
           display: "flex",
           flexDirection: "column",
           gap: 15,
-          marginTop: 30,
         }}
       >
-
         <label>Nombre del Campeonato</label>
 
         <input
           value={name}
           onChange={(e) => setName(e.target.value)}
           style={inputStyle}
+          placeholder="Ej: Copa Relámpago 2026"
         />
 
         <label>Modalidad</label>
@@ -85,20 +122,20 @@ export default function TournamentForm() {
           </option>
         </select>
 
-        <label>Cantidad de Equipos</label>
+        <label>Cantidad de Plazas</label>
 
         <select
           value={teams}
           onChange={(e) =>
-            setTeams(Number(e.target.value))
+            setTeamsCount(Number(e.target.value))
           }
           style={inputStyle}
         >
-          <option value={4}>4 Equipos</option>
-          <option value={8}>8 Equipos</option>
-          <option value={16}>16 Equipos</option>
-          <option value={32}>32 Equipos</option>
-          <option value={64}>64 Equipos</option>
+          <option value={4}>4 Plazas</option>
+          <option value={8}>8 Plazas</option>
+          <option value={16}>16 Plazas</option>
+          <option value={32}>32 Plazas</option>
+          <option value={64}>64 Plazas</option>
         </select>
 
         <label>Cantidad de Canchas</label>
@@ -131,6 +168,7 @@ export default function TournamentForm() {
 
         <input
           type="number"
+          min={1}
           value={duration}
           onChange={(e) =>
             setDuration(Number(e.target.value))
@@ -144,14 +182,12 @@ export default function TournamentForm() {
         >
           CREAR CAMPEONATO
         </button>
-
       </div>
-
     </div>
   );
 }
 
-const inputStyle: React.CSSProperties = {
+const inputStyle: CSSProperties = {
   padding: 12,
   borderRadius: 8,
   border: "1px solid #334155",
@@ -160,7 +196,7 @@ const inputStyle: React.CSSProperties = {
   fontSize: 16,
 };
 
-const buttonStyle: React.CSSProperties = {
+const buttonStyle: CSSProperties = {
   marginTop: 20,
   padding: 15,
   border: "none",
@@ -169,4 +205,5 @@ const buttonStyle: React.CSSProperties = {
   color: "white",
   fontSize: 16,
   cursor: "pointer",
+  fontWeight: "bold",
 };
