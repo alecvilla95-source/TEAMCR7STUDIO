@@ -42,6 +42,417 @@ function getCourtLabel(team: Team) {
   return `Cancha ${team.assignedCourt ?? "-"}`;
 }
 
+function escapeHtml(value: string) {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+function printHtml(html: string) {
+  const printWindow = window.open(
+    "",
+    "_blank",
+    "width=1000,height=800"
+  );
+
+  if (!printWindow) {
+    alert(
+      "No se pudo abrir la ventana de impresión. Revisa si el navegador bloqueó ventanas emergentes."
+    );
+
+    return;
+  }
+
+  printWindow.document.open();
+  printWindow.document.write(html);
+  printWindow.document.close();
+}
+
+function renderPlayerRows(players: Player[]) {
+  const rows =
+    players.length > 0
+      ? players
+      : Array.from({
+          length: 25,
+        }).map(() => null);
+
+  return rows
+    .map((player, index) => {
+      return `
+        <tr>
+          <td>${index + 1}</td>
+          <td>${player ? escapeHtml(player.name) : ""}</td>
+          <td>${player ? escapeHtml(player.documentId) : ""}</td>
+          <td>${player ? escapeHtml(player.jerseyNumber) : ""}</td>
+          <td></td>
+        </tr>
+      `;
+    })
+    .join("");
+}
+
+function buildTeamRosterHtml({
+  tournamentName,
+  team,
+  players,
+  autoPrint = true,
+}: {
+  tournamentName: string;
+  team: Team;
+  players: Player[];
+  autoPrint?: boolean;
+}) {
+  return `
+    <!doctype html>
+    <html>
+      <head>
+        <meta charset="utf-8" />
+
+        <title>Ficha de Jugadores</title>
+
+        <style>
+          * {
+            box-sizing: border-box;
+          }
+
+          body {
+            font-family: Arial, sans-serif;
+            margin: 25px;
+            color: #111827;
+          }
+
+          .sheet {
+            page-break-after: always;
+          }
+
+          .sheet:last-child {
+            page-break-after: auto;
+          }
+
+          .header {
+            text-align: center;
+            border: 2px solid #111827;
+            padding: 14px;
+            margin-bottom: 18px;
+          }
+
+          h1 {
+            margin: 0;
+            font-size: 24px;
+            text-transform: uppercase;
+          }
+
+          .info {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 18px;
+          }
+
+          .info td {
+            border: 1px solid #111827;
+            padding: 8px;
+            font-size: 13px;
+          }
+
+          .info td:first-child {
+            width: 170px;
+            font-weight: bold;
+            background: #e5e7eb;
+          }
+
+          table.players {
+            width: 100%;
+            border-collapse: collapse;
+          }
+
+          table.players th,
+          table.players td {
+            border: 1px solid #111827;
+            padding: 8px;
+            font-size: 13px;
+            height: 32px;
+          }
+
+          table.players th {
+            background: #e5e7eb;
+            text-align: center;
+          }
+
+          table.players td:first-child,
+          table.players td:nth-child(4) {
+            text-align: center;
+          }
+
+          .footer {
+            margin-top: 28px;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 50px;
+            text-align: center;
+            font-size: 13px;
+          }
+
+          .signature {
+            border-top: 1px solid #111827;
+            padding-top: 8px;
+            margin-top: 55px;
+          }
+
+          @media print {
+            body {
+              margin: 14mm;
+            }
+          }
+        </style>
+      </head>
+
+      <body>
+        <div class="sheet">
+          <div class="header">
+            <h1>Ficha Oficial de Jugadores</h1>
+          </div>
+
+          <table class="info">
+            <tbody>
+              <tr>
+                <td>Campeonato</td>
+                <td>${escapeHtml(tournamentName)}</td>
+              </tr>
+
+              <tr>
+                <td>Equipo</td>
+                <td>${escapeHtml(team.name)}</td>
+              </tr>
+
+              <tr>
+                <td>Categoría</td>
+                <td>${escapeHtml(getCategoryLabel(team))}</td>
+              </tr>
+
+              <tr>
+                <td>Cancha</td>
+                <td>${escapeHtml(getCourtLabel(team))}</td>
+              </tr>
+
+              <tr>
+                <td>Fecha de impresión</td>
+                <td>${escapeHtml(new Date().toLocaleString())}</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <table class="players">
+            <thead>
+              <tr>
+                <th style="width: 45px;">N°</th>
+                <th>Apellidos y nombres</th>
+                <th style="width: 180px;">Documento de identidad</th>
+                <th style="width: 80px;">Dorsal</th>
+                <th style="width: 170px;">Firma</th>
+              </tr>
+            </thead>
+
+            <tbody>
+              ${renderPlayerRows(players)}
+            </tbody>
+          </table>
+
+          <div class="footer">
+            <div class="signature">
+              Firma del Delegado
+            </div>
+
+            <div class="signature">
+              Firma de Organización
+            </div>
+          </div>
+        </div>
+
+        ${
+          autoPrint
+            ? `
+              <script>
+                window.onload = function () {
+                  window.focus();
+                  setTimeout(function () {
+                    window.print();
+                  }, 300);
+                };
+              </script>
+            `
+            : ""
+        }
+      </body>
+    </html>
+  `;
+}
+
+function buildAllRostersHtml({
+  tournamentName,
+  teams,
+  players,
+}: {
+  tournamentName: string;
+  teams: Team[];
+  players: Player[];
+}) {
+  const orderedTeams = [...teams].sort((a, b) => {
+    const categoryA = a.category === "WOMEN" ? 2 : 1;
+    const categoryB = b.category === "WOMEN" ? 2 : 1;
+
+    if (categoryA !== categoryB) {
+      return categoryA - categoryB;
+    }
+
+    if ((a.assignedCourt ?? 0) !== (b.assignedCourt ?? 0)) {
+      return (a.assignedCourt ?? 0) - (b.assignedCourt ?? 0);
+    }
+
+    return a.name.localeCompare(b.name);
+  });
+
+  const sheets = orderedTeams
+    .map((team) => {
+      const teamPlayers = players.filter(
+        (player) => player.teamId === team.id
+      );
+
+      return buildTeamRosterHtml({
+        tournamentName,
+        team,
+        players: teamPlayers,
+        autoPrint: false,
+      })
+        .replace("<body>", "")
+        .replace("</body>", "")
+        .replace("</html>", "")
+        .replace(/<!doctype html>[\s\S]*?<body>/, "");
+    })
+    .join("");
+
+  return `
+    <!doctype html>
+    <html>
+      <head>
+        <meta charset="utf-8" />
+
+        <title>Fichas de Jugadores</title>
+
+        <style>
+          * {
+            box-sizing: border-box;
+          }
+
+          body {
+            font-family: Arial, sans-serif;
+            margin: 25px;
+            color: #111827;
+          }
+
+          .sheet {
+            page-break-after: always;
+          }
+
+          .sheet:last-child {
+            page-break-after: auto;
+          }
+
+          .header {
+            text-align: center;
+            border: 2px solid #111827;
+            padding: 14px;
+            margin-bottom: 18px;
+          }
+
+          h1 {
+            margin: 0;
+            font-size: 24px;
+            text-transform: uppercase;
+          }
+
+          .info {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 18px;
+          }
+
+          .info td {
+            border: 1px solid #111827;
+            padding: 8px;
+            font-size: 13px;
+          }
+
+          .info td:first-child {
+            width: 170px;
+            font-weight: bold;
+            background: #e5e7eb;
+          }
+
+          table.players {
+            width: 100%;
+            border-collapse: collapse;
+          }
+
+          table.players th,
+          table.players td {
+            border: 1px solid #111827;
+            padding: 8px;
+            font-size: 13px;
+            height: 32px;
+          }
+
+          table.players th {
+            background: #e5e7eb;
+            text-align: center;
+          }
+
+          table.players td:first-child,
+          table.players td:nth-child(4) {
+            text-align: center;
+          }
+
+          .footer {
+            margin-top: 28px;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 50px;
+            text-align: center;
+            font-size: 13px;
+          }
+
+          .signature {
+            border-top: 1px solid #111827;
+            padding-top: 8px;
+            margin-top: 55px;
+          }
+
+          @media print {
+            body {
+              margin: 14mm;
+            }
+          }
+        </style>
+      </head>
+
+      <body>
+        ${sheets}
+
+        <script>
+          window.onload = function () {
+            window.focus();
+            setTimeout(function () {
+              window.print();
+            }, 300);
+          };
+        </script>
+      </body>
+    </html>
+  `;
+}
+
 export default function PlayersView() {
   const { tournament } = useTournament();
 
@@ -90,6 +501,33 @@ export default function PlayersView() {
       teams,
       maxPlayers: 25,
     });
+  }
+
+  function printTeamRoster(team: Team) {
+    const teamPlayers = getPlayersByTeam(team.id);
+
+    const html = buildTeamRosterHtml({
+      tournamentName: tournament?.name ?? "Campeonato",
+      team,
+      players: teamPlayers,
+    });
+
+    printHtml(html);
+  }
+
+  function printAllRosters() {
+    if (teams.length === 0) {
+      alert("No hay equipos registrados.");
+      return;
+    }
+
+    const html = buildAllRostersHtml({
+      tournamentName: tournament?.name ?? "Campeonato",
+      teams,
+      players,
+    });
+
+    printHtml(html);
   }
 
   async function uploadAllTemplates(
@@ -234,6 +672,13 @@ export default function PlayersView() {
             >
               📤 Subir todas las fichas llenas
             </button>
+
+            <button
+              onClick={printAllRosters}
+              style={allPrintButton}
+            >
+              📄 Imprimir todas las fichas
+            </button>
           </div>
         </div>
       </div>
@@ -268,6 +713,7 @@ export default function PlayersView() {
         getPlayersByTeam={getPlayersByTeam}
         onDownload={downloadTemplate}
         onUpload={uploadTemplate}
+        onPrint={printTeamRoster}
       />
 
       {womenTeams.length > 0 && (
@@ -281,6 +727,7 @@ export default function PlayersView() {
           getPlayersByTeam={getPlayersByTeam}
           onDownload={downloadTemplate}
           onUpload={uploadTemplate}
+          onPrint={printTeamRoster}
         />
       )}
     </div>
@@ -297,6 +744,7 @@ function TeamSection({
   getPlayersByTeam,
   onDownload,
   onUpload,
+  onPrint,
 }: {
   title: string;
   teams: Team[];
@@ -312,6 +760,7 @@ function TeamSection({
     event: React.ChangeEvent<HTMLInputElement>,
     team: Team
   ) => void;
+  onPrint: (team: Team) => void;
 }) {
   const grouped = groupTeamsByCourt(teams);
 
@@ -375,6 +824,7 @@ function TeamSection({
                   onUpload={(event) =>
                     onUpload(event, team)
                   }
+                  onPrint={() => onPrint(team)}
                 />
               );
             })}
@@ -395,6 +845,7 @@ function TeamPlayerCard({
   onDownload,
   onUploadClick,
   onUpload,
+  onPrint,
 }: {
   team: Team;
   players: Player[];
@@ -409,6 +860,7 @@ function TeamPlayerCard({
   onUpload: (
     event: React.ChangeEvent<HTMLInputElement>
   ) => void;
+  onPrint: () => void;
 }) {
   return (
     <div
@@ -462,14 +914,21 @@ function TeamPlayerCard({
           onClick={onDownload}
           style={downloadButton}
         >
-          📥 Descargar ficha Excel
+          📥 Descargar Excel
         </button>
 
         <button
           onClick={onUploadClick}
           style={uploadButton}
         >
-          📤 Subir ficha llena
+          📤 Subir ficha
+        </button>
+
+        <button
+          onClick={onPrint}
+          style={printButton}
+        >
+          📄 Imprimir ficha
         </button>
 
         <button
@@ -648,7 +1107,7 @@ const teamGrid: CSSProperties = {
 const buttonGrid: CSSProperties = {
   display: "grid",
   gridTemplateColumns:
-    "repeat(auto-fit, minmax(170px, 1fr))",
+    "repeat(auto-fit, minmax(150px, 1fr))",
   gap: 10,
 };
 
@@ -672,6 +1131,16 @@ const allUploadButton: CSSProperties = {
   fontWeight: "bold",
 };
 
+const allPrintButton: CSSProperties = {
+  padding: "14px 18px",
+  background: "#7c3aed",
+  color: "white",
+  border: "none",
+  borderRadius: 10,
+  cursor: "pointer",
+  fontWeight: "bold",
+};
+
 const downloadButton: CSSProperties = {
   padding: "12px",
   background: "#16a34a",
@@ -685,6 +1154,16 @@ const downloadButton: CSSProperties = {
 const uploadButton: CSSProperties = {
   padding: "12px",
   background: "#2563eb",
+  color: "white",
+  border: "none",
+  borderRadius: 8,
+  cursor: "pointer",
+  fontWeight: "bold",
+};
+
+const printButton: CSSProperties = {
+  padding: "12px",
+  background: "#7c3aed",
   color: "white",
   border: "none",
   borderRadius: 8,
