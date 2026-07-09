@@ -102,11 +102,29 @@ export default function Dashboard() {
 
   const menTeams = teams.filter(
     (team) => team.category !== "WOMEN"
-  ).length;
+  );
 
   const womenTeams = teams.filter(
     (team) => team.category === "WOMEN"
-  ).length;
+  );
+
+  const menCourts =
+    tournament?.courts ?? 0;
+
+  const womenCourts =
+    tournament?.womenCourts ?? 0;
+
+  function countMenByCourt(court: number) {
+    return menTeams.filter(
+      (team) => team.assignedCourt === court
+    ).length;
+  }
+
+  function countWomenByCourt(court: number) {
+    return womenTeams.filter(
+      (team) => team.assignedCourt === court
+    ).length;
+  }
 
   return (
     <div>
@@ -174,14 +192,14 @@ export default function Dashboard() {
         />
 
         <StatCard
-          label="Varones"
-          value={menTeams}
+          label="Total Equipos Varones"
+          value={menTeams.length}
           icon="⚽"
         />
 
         <StatCard
-          label="Mujeres"
-          value={womenTeams}
+          label="Total Equipos Mujeres"
+          value={womenTeams.length}
           icon="👩"
         />
 
@@ -205,13 +223,13 @@ export default function Dashboard() {
 
         <StatCard
           label="Canchas Varones"
-          value={tournament?.courts ?? 0}
+          value={menCourts}
           icon="🏟"
         />
 
         <StatCard
           label="Canchas Mujeres"
-          value={tournament?.womenCourts ?? 0}
+          value={womenCourts}
           icon="🏟"
         />
       </div>
@@ -232,7 +250,7 @@ export default function Dashboard() {
             color="#93c5fd"
           />
 
-          {(tournament?.womenCourts ?? 0) > 0 && (
+          {womenCourts > 0 && (
             <ChampionBox
               title="Campeona Mujeres"
               value={champions.WOMEN?.name ?? "Pendiente"}
@@ -247,6 +265,84 @@ export default function Dashboard() {
               color="#facc15"
             />
           )}
+        </div>
+
+        <div style={panelBox}>
+          <h2
+            style={{
+              marginTop: 0,
+            }}
+          >
+            📋 Equipos por cancha
+          </h2>
+
+          <div style={courtCountGrid}>
+            <div>
+              <h3
+                style={{
+                  color: "#93c5fd",
+                  marginTop: 0,
+                }}
+              >
+                VARONES
+              </h3>
+
+              {menCourts > 0 ? (
+                Array.from({
+                  length: menCourts,
+                }).map((_, index) => (
+                  <CourtCountRow
+                    key={index}
+                    label={`Cancha ${index + 1}`}
+                    value={countMenByCourt(index + 1)}
+                    color="#93c5fd"
+                  />
+                ))
+              ) : (
+                <p style={mutedText}>
+                  Sin canchas de varones.
+                </p>
+              )}
+
+              <div style={totalMiniBox}>
+                Total Varones:{" "}
+                <strong>{menTeams.length}</strong>
+              </div>
+            </div>
+
+            <div>
+              <h3
+                style={{
+                  color: "#f9a8d4",
+                  marginTop: 0,
+                }}
+              >
+                MUJERES
+              </h3>
+
+              {womenCourts > 0 ? (
+                Array.from({
+                  length: womenCourts,
+                }).map((_, index) => (
+                  <CourtCountRow
+                    key={index}
+                    label={`C. Mujer ${index + 1}`}
+                    value={countWomenByCourt(index + 1)}
+                    color="#f9a8d4"
+                  />
+                ))
+              ) : (
+                <p style={mutedText}>
+                  Sin canchas de mujeres.
+                </p>
+              )}
+
+              <div style={totalMiniBox}>
+                Total Mujeres:{" "}
+                <strong>{womenTeams.length}</strong>
+              </div>
+            </div>
+          </div>
         </div>
 
         <div style={panelBox}>
@@ -395,6 +491,43 @@ function ChampionBox({
   );
 }
 
+function CourtCountRow({
+  label,
+  value,
+  color,
+}: {
+  label: string;
+  value: number;
+  color: string;
+}) {
+  return (
+    <div
+      style={{
+        background: "#0f172a",
+        border: "1px solid #334155",
+        borderLeft: `4px solid ${color}`,
+        borderRadius: 10,
+        padding: 12,
+        marginBottom: 10,
+        display: "flex",
+        justifyContent: "space-between",
+        gap: 10,
+      }}
+    >
+      <strong>{label}</strong>
+
+      <span
+        style={{
+          color,
+          fontWeight: "bold",
+        }}
+      >
+        {value} equipos
+      </span>
+    </div>
+  );
+}
+
 function NextMatchCard({
   match,
 }: {
@@ -526,7 +659,7 @@ const heroActions: CSSProperties = {
 const statsGrid: CSSProperties = {
   display: "grid",
   gridTemplateColumns:
-    "repeat(auto-fit, minmax(150px, 1fr))",
+    "repeat(auto-fit, minmax(170px, 1fr))",
   gap: 15,
   marginBottom: 25,
 };
@@ -551,6 +684,26 @@ const panelBox: CSSProperties = {
   border: "1px solid #334155",
   borderRadius: 14,
   padding: 20,
+};
+
+const courtCountGrid: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns:
+    "repeat(auto-fit, minmax(230px, 1fr))",
+  gap: 18,
+};
+
+const totalMiniBox: CSSProperties = {
+  marginTop: 12,
+  background: "#111827",
+  border: "1px solid #334155",
+  borderRadius: 10,
+  padding: 12,
+  color: "#e5e7eb",
+};
+
+const mutedText: CSSProperties = {
+  color: "#94a3b8",
 };
 
 const quickGrid: CSSProperties = {
