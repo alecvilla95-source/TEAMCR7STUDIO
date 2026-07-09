@@ -1,5 +1,8 @@
 import { useFixture } from "../../store/fixtureStore";
+import { useTournament } from "../../store/tournamentStore";
+import { useTeams } from "../../store/teamStore";
 import { useApp } from "../../store/appStore";
+
 import { groupMatches } from "../../utils/groupMatches";
 
 import MatchCard from "../../components/match/MatchCard";
@@ -7,9 +10,17 @@ import MatchCard from "../../components/match/MatchCard";
 export default function FixtureView() {
   const { fixture } = useFixture();
 
+  const { tournament } = useTournament();
+
+  const { teams } = useTeams();
+
   const { setPage } = useApp();
 
   const rounds = groupMatches(fixture);
+
+  const finishedMatches = fixture.filter(
+    (match) => match.status === "FINISHED"
+  ).length;
 
   function exportPDF() {
     window.print();
@@ -17,69 +28,145 @@ export default function FixtureView() {
 
   return (
     <div>
-
       <div
         style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          marginBottom: 25,
-          gap: 15,
-          flexWrap: "wrap",
+          background: "#1e293b",
+          border: "1px solid #334155",
+          borderRadius: 14,
+          padding: 25,
+          marginBottom: 30,
         }}
       >
-        <div>
-          <h2
-            style={{
-              marginBottom: 8,
-            }}
-          >
-            Fixture
-          </h2>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            gap: 20,
+            flexWrap: "wrap",
+            alignItems: "center",
+          }}
+        >
+          <div>
+            <h2
+              style={{
+                margin: 0,
+                marginBottom: 8,
+              }}
+            >
+              📅 Fixture del Campeonato
+            </h2>
 
-          <p
+            <h1
+              style={{
+                margin: 0,
+                fontSize: 34,
+              }}
+            >
+              {tournament?.name ?? "TEAMCR7STUDIO"}
+            </h1>
+
+            <p
+              style={{
+                color: "#94a3b8",
+                marginTop: 10,
+                marginBottom: 0,
+              }}
+            >
+              Modalidad:{" "}
+              <strong>
+                {tournament?.mode === "GROUPS"
+                  ? "Fase de Grupos"
+                  : "Eliminación Directa"}
+              </strong>
+            </p>
+          </div>
+
+          <div
             style={{
-              color: "#94a3b8",
-              margin: 0,
+              display: "flex",
+              gap: 12,
+              flexWrap: "wrap",
             }}
           >
-            Partidos generados:{" "}
-            <strong>{fixture.length}</strong>
-          </p>
+            <button
+              onClick={() => setPage("results")}
+              style={secondaryButton}
+            >
+              📊 Resultados
+            </button>
+
+            <button
+              onClick={exportPDF}
+              style={primaryButton}
+            >
+              📄 Exportar PDF
+            </button>
+          </div>
         </div>
 
         <div
           style={{
-            display: "flex",
-            gap: 12,
-            flexWrap: "wrap",
+            display: "grid",
+            gridTemplateColumns:
+              "repeat(auto-fit, minmax(150px, 1fr))",
+            gap: 15,
+            marginTop: 25,
           }}
         >
-          <button
-            onClick={() => setPage("results")}
-            style={secondaryButton}
-          >
-            📊 Resultados
-          </button>
+          <InfoBox
+            label="Equipos"
+            value={teams.length}
+          />
 
-          <button
-            onClick={exportPDF}
-            style={primaryButton}
-          >
-            📄 Exportar PDF
-          </button>
+          <InfoBox
+            label="Partidos"
+            value={fixture.length}
+          />
+
+          <InfoBox
+            label="Jugados"
+            value={finishedMatches}
+          />
+
+          <InfoBox
+            label="Canchas"
+            value={tournament?.courts ?? 0}
+          />
+
+          <InfoBox
+            label="Inicio"
+            value={tournament?.startTime ?? "--:--"}
+          />
+
+          <InfoBox
+            label="Duración"
+            value={`${tournament?.duration ?? 0} min`}
+          />
         </div>
       </div>
 
-      {rounds.map((round) => (
+      {rounds.length === 0 && (
+        <div
+          style={{
+            background: "#1e293b",
+            border: "1px solid #334155",
+            borderRadius: 14,
+            padding: 25,
+            color: "#94a3b8",
+          }}
+        >
+          Todavía no hay fixture generado.
+        </div>
+      )}
 
+      {rounds.map((round) => (
         <div
           key={round.id}
           style={{
             marginBottom: 40,
+            breakInside: "avoid",
           }}
         >
-
           <h3
             style={{
               borderBottom: "2px solid #334155",
@@ -92,18 +179,51 @@ export default function FixtureView() {
           </h3>
 
           {round.matches.map((match) => (
-
             <MatchCard
               key={match.id}
               match={match}
             />
-
           ))}
-
         </div>
-
       ))}
+    </div>
+  );
+}
 
+function InfoBox({
+  label,
+  value,
+}: {
+  label: string;
+  value: string | number;
+}) {
+  return (
+    <div
+      style={{
+        background: "#0f172a",
+        border: "1px solid #334155",
+        borderRadius: 10,
+        padding: 14,
+      }}
+    >
+      <div
+        style={{
+          color: "#94a3b8",
+          fontSize: 13,
+          marginBottom: 6,
+        }}
+      >
+        {label}
+      </div>
+
+      <div
+        style={{
+          fontSize: 22,
+          fontWeight: "bold",
+        }}
+      >
+        {value}
+      </div>
     </div>
   );
 }
@@ -120,9 +240,9 @@ const primaryButton: React.CSSProperties = {
 
 const secondaryButton: React.CSSProperties = {
   padding: "12px 18px",
-  background: "#1e293b",
+  background: "#334155",
   color: "white",
-  border: "1px solid #334155",
+  border: "none",
   borderRadius: 8,
   cursor: "pointer",
   fontWeight: "bold",
