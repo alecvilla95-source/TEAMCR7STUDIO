@@ -56,6 +56,15 @@ function createId() {
   return `${Date.now()}-${Math.random()}`;
 }
 
+function escapeHtml(value: string) {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
 function getCategoryLabel(
   category: VenueCategory
 ) {
@@ -259,6 +268,205 @@ function calculateTopScorers(
     });
 }
 
+function buildTopScorersPrintHtml({
+  tournamentName,
+  topScorers,
+  showWomen,
+}: {
+  tournamentName: string;
+  topScorers: TopScorerRow[];
+  showWomen: boolean;
+}) {
+  const menRows = topScorers.filter(
+    (row) => row.category !== "WOMEN"
+  );
+
+  const womenRows = topScorers.filter(
+    (row) => row.category === "WOMEN"
+  );
+
+  function renderRows(rows: TopScorerRow[]) {
+    if (rows.length === 0) {
+      return `
+        <tr>
+          <td colspan="4" class="empty">
+            Sin goles registrados.
+          </td>
+        </tr>
+      `;
+    }
+
+    return rows
+      .map(
+        (row, index) => `
+          <tr>
+            <td>${index + 1}</td>
+            <td>${escapeHtml(row.playerName)}</td>
+            <td>${escapeHtml(row.teamName)}</td>
+            <td><strong>${row.goals}</strong></td>
+          </tr>
+        `
+      )
+      .join("");
+  }
+
+  function renderTable(
+    title: string,
+    rows: TopScorerRow[]
+  ) {
+    return `
+      <section>
+        <h2>${escapeHtml(title)}</h2>
+
+        <table>
+          <thead>
+            <tr>
+              <th>Pos</th>
+              <th>Jugador/a</th>
+              <th>Equipo</th>
+              <th>Goles</th>
+            </tr>
+          </thead>
+
+          <tbody>
+            ${renderRows(rows)}
+          </tbody>
+        </table>
+      </section>
+    `;
+  }
+
+  return `
+    <!doctype html>
+    <html>
+      <head>
+        <meta charset="utf-8" />
+
+        <title>Tabla de Goleadores</title>
+
+        <style>
+          * {
+            box-sizing: border-box;
+          }
+
+          body {
+            font-family: Arial, sans-serif;
+            margin: 30px;
+            color: #111827;
+          }
+
+          .header {
+            border-bottom: 3px solid #111827;
+            padding-bottom: 14px;
+            margin-bottom: 22px;
+          }
+
+          h1 {
+            margin: 0;
+            font-size: 28px;
+          }
+
+          h2 {
+            margin-top: 28px;
+            margin-bottom: 10px;
+            font-size: 22px;
+          }
+
+          .subtitle {
+            margin-top: 8px;
+            color: #374151;
+            font-size: 14px;
+          }
+
+          table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 24px;
+          }
+
+          th,
+          td {
+            border: 1px solid #111827;
+            padding: 9px;
+            text-align: left;
+            font-size: 14px;
+          }
+
+          th {
+            background: #e5e7eb;
+          }
+
+          td:first-child,
+          td:last-child,
+          th:first-child,
+          th:last-child {
+            text-align: center;
+          }
+
+          .empty {
+            text-align: center;
+            color: #6b7280;
+            padding: 16px;
+          }
+
+          .footer {
+            margin-top: 35px;
+            font-size: 12px;
+            color: #6b7280;
+            border-top: 1px solid #d1d5db;
+            padding-top: 10px;
+          }
+
+          @media print {
+            body {
+              margin: 18mm;
+            }
+
+            button {
+              display: none;
+            }
+          }
+        </style>
+      </head>
+
+      <body>
+        <div class="header">
+          <h1>⚽ Tabla de Goleadores</h1>
+
+          <div class="subtitle">
+            Campeonato: <strong>${escapeHtml(tournamentName)}</strong>
+          </div>
+
+          <div class="subtitle">
+            Generado: ${escapeHtml(new Date().toLocaleString())}
+          </div>
+        </div>
+
+        ${renderTable("🏆 Goleadores Varones", menRows)}
+
+        ${
+          showWomen
+            ? renderTable("🏆 Goleadoras Mujeres", womenRows)
+            : ""
+        }
+
+        <div class="footer">
+          TEAMCR7STUDIO — Registro oficial de goleadores.
+        </div>
+
+        <script>
+          window.onload = function () {
+            window.focus();
+            setTimeout(function () {
+              window.print();
+            }, 300);
+          };
+        </script>
+      </body>
+    </html>
+  `;
+}
+
 export default function ResultsView() {
   const { fixture, setFixture } = useFixture();
 
@@ -431,6 +639,35 @@ export default function ResultsView() {
     setGoalMatch(null);
   }
 
+  function printTopScorers() {
+    const html = buildTopScorersPrintHtml({
+      tournamentName:
+        tournament?.name ?? "TEAMCR7STUDIO",
+      topScorers,
+      showWomen:
+        (tournament?.womenCourts ?? 0) > 0,
+    });
+
+    const printWindow =
+      window.open(
+        "",
+        "_blank",
+        "width=1000,height=800"
+      );
+
+    if (!printWindow) {
+      alert(
+        "No se pudo abrir la ventana de impresión. Revisa si el navegador bloqueó ventanas emergentes."
+      );
+
+      return;
+    }
+
+    printWindow.document.open();
+    printWindow.document.write(html);
+    printWindow.document.close();
+  }
+
   function clearObs() {
     setActiveMatchId(null);
   }
@@ -570,6 +807,7 @@ export default function ResultsView() {
           showWomen={
             (tournament?.womenCourts ?? 0) > 0
           }
+          onPrint={printTopScorers}
         />
       </div>
 
@@ -1298,9 +1536,11 @@ function TeamGoalEditor({
 function TopScorersPanel({
   topScorers,
   showWomen,
+  onPrint,
 }: {
   topScorers: TopScorerRow[];
   showWomen: boolean;
+  onPrint: () => void;
 }) {
   const menRows = topScorers.filter(
     (row) => row.category !== "WOMEN"
@@ -1312,13 +1552,31 @@ function TopScorersPanel({
 
   return (
     <div style={topScorersBox}>
-      <h2
+      <div
         style={{
-          marginTop: 0,
+          display: "flex",
+          justifyContent: "space-between",
+          gap: 12,
+          alignItems: "center",
+          flexWrap: "wrap",
+          marginBottom: 15,
         }}
       >
-        ⚽ Tabla de Goleadores
-      </h2>
+        <h2
+          style={{
+            margin: 0,
+          }}
+        >
+          ⚽ Tabla de Goleadores
+        </h2>
+
+        <button
+          onClick={onPrint}
+          style={printScorersButton}
+        >
+          📄 Imprimir / PDF Goleadores
+        </button>
+      </div>
 
       <div style={topScorersGrid}>
         <TopScorersTable
@@ -1523,6 +1781,16 @@ const topScorersGrid: CSSProperties = {
   gridTemplateColumns:
     "repeat(auto-fit, minmax(320px, 1fr))",
   gap: 15,
+};
+
+const printScorersButton: CSSProperties = {
+  padding: "12px 18px",
+  background: "#f97316",
+  color: "white",
+  border: "none",
+  borderRadius: 8,
+  cursor: "pointer",
+  fontWeight: "bold",
 };
 
 const emptyBox: CSSProperties = {
