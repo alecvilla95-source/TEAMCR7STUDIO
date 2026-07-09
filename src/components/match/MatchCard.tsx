@@ -5,30 +5,20 @@ interface Props {
 }
 
 export default function MatchCard({ match }: Props) {
-
   function teamLabel(
     team: typeof match.teamA,
-    sourceMatch: number | null | undefined
+    sourceMatch?: number | null
   ) {
-
-    if (team) {
-      return team.name;
-    }
-
-    if (match.round === 1) {
-      return "Por definir";
-    }
+    if (team) return team.name;
 
     if (sourceMatch) {
       return `🏆 Ganador Partido ${sourceMatch}`;
     }
 
     return "Por definir";
-
   }
 
   return (
-
     <div
       style={{
         background: "#1e293b",
@@ -41,7 +31,6 @@ export default function MatchCard({ match }: Props) {
             : "1px solid #334155",
       }}
     >
-
       <div
         style={{
           display: "flex",
@@ -51,9 +40,7 @@ export default function MatchCard({ match }: Props) {
           fontSize: 14,
         }}
       >
-        <span>
-          Partido {match.id}
-        </span>
+        <span>Partido {match.id}</span>
 
         <span>
           🕒 {match.time || "--:--"} | 🏟 Cancha {match.court || "-"}
@@ -66,10 +53,7 @@ export default function MatchCard({ match }: Props) {
           fontWeight: "bold",
         }}
       >
-        {teamLabel(
-          match.teamA,
-          match.sourceMatchA
-        )}
+        {teamLabel(match.teamA, match.sourceMatchA)}
       </div>
 
       <div
@@ -89,14 +73,10 @@ export default function MatchCard({ match }: Props) {
           fontWeight: "bold",
         }}
       >
-        {teamLabel(
-          match.teamB,
-          match.sourceMatchB
-        )}
+        {teamLabel(match.teamB, match.sourceMatchB)}
       </div>
 
       {match.status === "FINISHED" && (
-
         <div
           style={{
             marginTop: 15,
@@ -110,11 +90,7 @@ export default function MatchCard({ match }: Props) {
         >
           🏆 Ganador: {match.winner?.name}
         </div>
-
       )}
-
     </div>
-
   );
-
 }

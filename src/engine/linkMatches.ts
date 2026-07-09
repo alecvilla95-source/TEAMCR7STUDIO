@@ -2,48 +2,41 @@ import type { Match } from "../types/match";
 
 export function linkMatches(matches: Match[]): Match[] {
 
+  // Copia profunda
   const fixture = matches.map(match => ({
     ...match,
-    sourceMatchA: null,
-    sourceMatchB: null,
   }));
 
+  // Obtener todas las rondas
   const totalRounds = Math.max(
     ...fixture.map(match => match.round)
   );
 
   for (let round = 1; round < totalRounds; round++) {
 
-    const current = fixture
-      .filter(match => match.round === round)
-      .sort((a, b) => a.order - b.order);
+    const current = fixture.filter(
+      match => match.round === round
+    );
 
-    const next = fixture
-      .filter(match => match.round === round + 1)
-      .sort((a, b) => a.order - b.order);
+    const next = fixture.filter(
+      match => match.round === round + 1
+    );
 
-    for (let i = 0; i < current.length; i += 2) {
+    current.forEach((match, index) => {
 
-      const nextMatch = next[Math.floor(i / 2)];
+      const nextMatch =
+        next[Math.floor(index / 2)];
 
-      if (!nextMatch) continue;
+      if (!nextMatch) return;
 
-      const first = current[i];
-      const second = current[i + 1];
+      match.nextMatchId = nextMatch.id;
 
-      if (first) {
-        first.nextMatchId = nextMatch.id;
-        first.nextSlot = "A";
-        nextMatch.sourceMatchA = first.id;
-      }
+      match.nextSlot =
+        index % 2 === 0
+          ? "A"
+          : "B";
 
-      if (second) {
-        second.nextMatchId = nextMatch.id;
-        second.nextSlot = "B";
-        nextMatch.sourceMatchB = second.id;
-      }
-
-    }
+    });
 
   }
 
