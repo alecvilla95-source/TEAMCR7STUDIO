@@ -71,6 +71,48 @@ export default function ResultsView() {
     <div>
       <h2>Resultados</h2>
 
+      <div
+        style={{
+          display: "flex",
+          gap: 12,
+          marginBottom: 25,
+          flexWrap: "wrap",
+        }}
+      >
+        <button
+          onClick={() => setActiveMatchId(null)}
+          style={{
+            padding: "12px 18px",
+            background: "#334155",
+            color: "white",
+            border: "none",
+            borderRadius: 8,
+            cursor: "pointer",
+            fontWeight: "bold",
+          }}
+        >
+          🧹 LIMPIAR OBS
+        </button>
+
+        <button
+          onClick={() => {
+            const url = `${window.location.origin}?page=overlay`;
+            window.open(url, "_blank");
+          }}
+          style={{
+            padding: "12px 18px",
+            background: "#7c3aed",
+            color: "white",
+            border: "none",
+            borderRadius: 8,
+            cursor: "pointer",
+            fontWeight: "bold",
+          }}
+        >
+          📺 ABRIR OVERLAY
+        </button>
+      </div>
+
       {champion && (
         <div
           style={{
