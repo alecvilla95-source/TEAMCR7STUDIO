@@ -1,20 +1,23 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 
+import App from "./App";
+
 import "./global.css";
 import "./print.css";
 
-import App from "./App";
-
 import { AppProvider } from "./store/appStore";
+import { TournamentProvider } from "./store/tournamentStore";
 import { TeamProvider } from "./store/teamStore";
 import { FixtureProvider } from "./store/fixtureStore";
-import { TournamentProvider } from "./store/tournamentStore";
 import { ChampionProvider } from "./store/championStore";
 import { OverlayProvider } from "./store/overlayStore";
 import { TimerProvider } from "./store/timerStore";
+import { PlayerProvider } from "./store/playerStore";
 
-ReactDOM.createRoot(document.getElementById("root")!).render(
+ReactDOM.createRoot(
+  document.getElementById("root")!
+).render(
   <React.StrictMode>
     <AppProvider>
       <TournamentProvider>
@@ -23,7 +26,9 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
             <ChampionProvider>
               <OverlayProvider>
                 <TimerProvider>
-                  <App />
+                  <PlayerProvider>
+                    <App />
+                  </PlayerProvider>
                 </TimerProvider>
               </OverlayProvider>
             </ChampionProvider>
