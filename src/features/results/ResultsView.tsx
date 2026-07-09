@@ -241,17 +241,20 @@ export default function ResultsView() {
       return;
     }
 
+    const isGroupMatch =
+      currentMatch.stage === "GROUP";
+
     const result = scores[matchId] ?? {
       a: currentMatch.scoreA,
       b: currentMatch.scoreB,
     };
 
     const penaltyResult =
-      result.a === result.b
+      !isGroupMatch && result.a === result.b
         ? penalties[matchId]
         : undefined;
 
-    if (result.a === result.b) {
+    if (!isGroupMatch && result.a === result.b) {
       if (!penaltyResult) {
         alert("El partido está empatado. Ingrese los penales.");
         return;
@@ -553,12 +556,16 @@ export default function ResultsView() {
         const active =
           activeMatchId === match.id;
 
+        const isGroupMatch =
+          match.stage === "GROUP";
+
         const scoreA = getScore(match.id, "a");
         const scoreB = getScore(match.id, "b");
 
         const showPenalties =
           ready &&
           !finished &&
+          !isGroupMatch &&
           scoreA === scoreB;
 
         return (
@@ -582,7 +589,7 @@ export default function ResultsView() {
             <h3>
               Partido {match.id}
 
-              {match.stage === "GROUP" && (
+              {isGroupMatch && (
                 <span
                   style={{
                     marginLeft: 10,
@@ -869,13 +876,21 @@ export default function ResultsView() {
                 <div
                   style={{
                     padding: 12,
-                    background: "#14532d",
-                    color: "#bbf7d0",
+                    background:
+                      match.winner
+                        ? "#14532d"
+                        : "#334155",
+                    color:
+                      match.winner
+                        ? "#bbf7d0"
+                        : "#e2e8f0",
                     borderRadius: 8,
                     fontWeight: "bold",
                   }}
                 >
-                  🏆 Ganador: {match.winner?.name}
+                  {match.winner
+                    ? `🏆 Ganador: ${match.winner.name}`
+                    : "🤝 Empate"}
                 </div>
               )}
 

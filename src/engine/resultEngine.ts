@@ -18,11 +18,19 @@ export function applyResult(
 
   if (!current) return copy;
 
+  const isGroupMatch =
+    current.stage === "GROUP";
+
   current.scoreA = scoreA;
   current.scoreB = scoreB;
 
-  current.penaltyA = penaltyA;
-  current.penaltyB = penaltyB;
+  current.penaltyA = isGroupMatch
+    ? undefined
+    : penaltyA;
+
+  current.penaltyB = isGroupMatch
+    ? undefined
+    : penaltyB;
 
   current.status = "FINISHED";
 
@@ -37,25 +45,30 @@ export function applyResult(
   }
 
   if (scoreA === scoreB) {
-    if (
-      penaltyA === undefined ||
-      penaltyB === undefined ||
-      penaltyA === penaltyB
-    ) {
-      throw new Error(
-        "Debe ingresar penales válidos para definir el ganador."
-      );
-    }
+    if (isGroupMatch) {
+      winner = null;
+    } else {
+      if (
+        penaltyA === undefined ||
+        penaltyB === undefined ||
+        penaltyA === penaltyB
+      ) {
+        throw new Error(
+          "Debe ingresar penales válidos para definir el ganador."
+        );
+      }
 
-    winner =
-      penaltyA > penaltyB
-        ? current.teamA
-        : current.teamB;
+      winner =
+        penaltyA > penaltyB
+          ? current.teamA
+          : current.teamB;
+    }
   }
 
   current.winner = winner;
 
   if (
+    !isGroupMatch &&
     current.nextMatchId &&
     current.nextSlot &&
     winner
