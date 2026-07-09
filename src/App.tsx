@@ -7,6 +7,7 @@ import TournamentForm from "./features/tournament/TournamentForm";
 import TeamRegistration from "./features/teams/TeamRegistration";
 import FixtureView from "./features/fixture/FixtureView";
 import ResultsView from "./features/results/ResultsView";
+import OverlayView from "./features/overlay/OverlayView";
 
 export default function App() {
   const { page } = useApp();
@@ -42,7 +43,7 @@ export default function App() {
 
     case "overlay":
       title = "Overlay OBS";
-      content = <h2>Próximamente...</h2>;
+      content = <OverlayView />;
       break;
 
     case "settings":
@@ -54,6 +55,10 @@ export default function App() {
       title = "Dashboard";
       content = <Dashboard />;
       break;
+  }
+
+  if (page === "overlay") {
+    return content;
   }
 
   return (
