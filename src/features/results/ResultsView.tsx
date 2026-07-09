@@ -45,6 +45,19 @@ export default function ResultsView() {
     Record<number, { a: number; b: number }>
   >({});
 
+  const totalMatches = fixture.length;
+
+  const finishedMatches = fixture.filter(
+    (match) => match.status === "FINISHED"
+  ).length;
+
+  const pendingMatches =
+    totalMatches - finishedMatches;
+
+  function exportPDF() {
+    window.print();
+  }
+
   function getScore(
     matchId: number,
     team: "a" | "b"
@@ -324,7 +337,97 @@ export default function ResultsView() {
 
   return (
     <div>
-      <h2>Resultados</h2>
+      <div
+        style={{
+          background: "#1e293b",
+          border: "1px solid #334155",
+          borderRadius: 14,
+          padding: 25,
+          marginBottom: 25,
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            gap: 20,
+            flexWrap: "wrap",
+            alignItems: "center",
+          }}
+        >
+          <div>
+            <h2
+              style={{
+                margin: 0,
+                marginBottom: 8,
+              }}
+            >
+              📊 Resultados
+            </h2>
+
+            <h1
+              style={{
+                margin: 0,
+                fontSize: 32,
+              }}
+            >
+              {tournament?.name ?? "TEAMCR7STUDIO"}
+            </h1>
+
+            <p
+              style={{
+                color: "#94a3b8",
+                marginTop: 10,
+                marginBottom: 0,
+              }}
+            >
+              Reporte de resultados del campeonato.
+            </p>
+          </div>
+
+          <button
+            onClick={exportPDF}
+            style={primaryButton}
+          >
+            📄 Exportar PDF
+          </button>
+        </div>
+
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns:
+              "repeat(auto-fit, minmax(150px, 1fr))",
+            gap: 15,
+            marginTop: 25,
+          }}
+        >
+          <InfoBox
+            label="Partidos"
+            value={totalMatches}
+          />
+
+          <InfoBox
+            label="Jugados"
+            value={finishedMatches}
+          />
+
+          <InfoBox
+            label="Pendientes"
+            value={pendingMatches}
+          />
+
+          <InfoBox
+            label="Canchas"
+            value={tournament?.courts ?? 0}
+          />
+
+          <InfoBox
+            label="Duración"
+            value={`${tournament?.duration ?? 0} min`}
+          />
+        </div>
+      </div>
 
       <div
         style={{
@@ -429,6 +532,7 @@ export default function ResultsView() {
             marginBottom: 25,
             fontSize: 22,
             fontWeight: "bold",
+            textAlign: "center",
           }}
         >
           🏆 CAMPEÓN: {champion.name}
@@ -471,6 +575,7 @@ export default function ResultsView() {
                 : playing
                 ? "2px solid #22c55e"
                 : "1px solid #334155",
+              breakInside: "avoid",
             }}
           >
             <h3>
@@ -790,6 +895,44 @@ export default function ResultsView() {
   );
 }
 
+function InfoBox({
+  label,
+  value,
+}: {
+  label: string;
+  value: string | number;
+}) {
+  return (
+    <div
+      style={{
+        background: "#0f172a",
+        border: "1px solid #334155",
+        borderRadius: 10,
+        padding: 14,
+      }}
+    >
+      <div
+        style={{
+          color: "#94a3b8",
+          fontSize: 13,
+          marginBottom: 6,
+        }}
+      >
+        {label}
+      </div>
+
+      <div
+        style={{
+          fontSize: 22,
+          fontWeight: "bold",
+        }}
+      >
+        {value}
+      </div>
+    </div>
+  );
+}
+
 const scoreControls: React.CSSProperties = {
   display: "flex",
   gap: 8,
@@ -815,6 +958,16 @@ const scoreButton: React.CSSProperties = {
   color: "white",
   cursor: "pointer",
   fontSize: 20,
+  fontWeight: "bold",
+};
+
+const primaryButton: React.CSSProperties = {
+  padding: "12px 18px",
+  background: "#2563eb",
+  color: "white",
+  border: "none",
+  borderRadius: 8,
+  cursor: "pointer",
   fontWeight: "bold",
 };
 
