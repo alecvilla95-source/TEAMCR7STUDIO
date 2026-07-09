@@ -4,6 +4,7 @@ import type { Tournament } from "../types/tournament";
 
 import { generateFixtureV2 } from "./fixtureEngineV2";
 import { buildGroupStage } from "./groupEngine";
+import { buildCourtBrackets } from "./courtBracketEngine";
 import { scheduleMatches } from "./scheduleEngine";
 
 export function buildTournament(
@@ -14,6 +15,14 @@ export function buildTournament(
 
   if (tournament.mode === "GROUPS") {
     matches = buildGroupStage(teams);
+  } else if (
+    tournament.courtMode === "SEPARATE_BRACKETS" &&
+    tournament.courts > 1
+  ) {
+    matches = buildCourtBrackets(
+      teams,
+      tournament.courts
+    );
   } else {
     matches = generateFixtureV2(teams);
   }

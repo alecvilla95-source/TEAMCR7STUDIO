@@ -56,30 +56,32 @@ function getBreakForMatch(
   return breaks.default;
 }
 
-export function scheduleMatches(
-  matches: Match[],
+function getTotalEliminationRounds(
+  fixture: Match[]
+) {
+  const rounds = fixture
+    .filter((match) => match.stage !== "GROUP")
+    .map((match) => match.round);
+
+  return rounds.length > 0
+    ? Math.max(...rounds)
+    : 0;
+}
+
+function scheduleNormal(
+  fixture: Match[],
   courts: number,
   startTime: string,
   duration: number,
-  breaks: TournamentBreaks = defaultBreaks
-): Match[] {
-  const fixture = matches.map((match) => ({
-    ...match,
-  }));
-
+  breaks: TournamentBreaks
+) {
   const safeCourts = Math.max(
     1,
     courts
   );
 
-  const eliminationRounds = fixture
-    .filter((match) => match.stage !== "GROUP")
-    .map((match) => match.round);
-
   const totalEliminationRounds =
-    eliminationRounds.length > 0
-      ? Math.max(...eliminationRounds)
-      : 0;
+    getTotalEliminationRounds(fixture);
 
   let currentTime = startTime;
 
@@ -95,7 +97,6 @@ export function scheduleMatches(
 
     block.forEach((match, courtIndex) => {
       match.court = courtIndex + 1;
-
       match.time = currentTime;
     });
 
@@ -116,4 +117,97 @@ export function scheduleMatches(
   }
 
   return fixture;
+}
+
+function schedulePreassignedCourts(
+  fixture: Match[],
+  startTime: string,
+  duration: number,
+  breaks: TournamentBreaks
+) {
+  const totalEliminationRounds =
+    getTotalEliminationRounds(fixture);
+
+  const sorted = [...fixture].sort((a, b) => {
+    if (a.round !== b.round) {
+      return a.round - b.round;
+    }
+
+    if (a.order !== b.order) {
+      return a.order - b.order;
+    }
+
+    return a.court - b.court;
+  });
+
+  const blocks = new Map<string, Match[]>();
+
+  sorted.forEach((match) => {
+    const key = `${match.round}_${match.order}`;
+
+    if (!blocks.has(key)) {
+      blocks.set(key, []);
+    }
+
+    blocks.get(key)!.push(match);
+  });
+
+  let currentTime = startTime;
+
+  Array.from(blocks.values()).forEach(
+    (block) => {
+      block.forEach((match) => {
+        match.time = currentTime;
+      });
+
+      const maxBreak = Math.max(
+        ...block.map((match) =>
+          getBreakForMatch(
+            match,
+            totalEliminationRounds,
+            breaks
+          )
+        )
+      );
+
+      currentTime = addMinutes(
+        currentTime,
+        duration + maxBreak
+      );
+    }
+  );
+
+  return sorted;
+}
+
+export function scheduleMatches(
+  matches: Match[],
+  courts: number,
+  startTime: string,
+  duration: number,
+  breaks: TournamentBreaks = defaultBreaks
+): Match[] {
+  const fixture = matches.map((match) => ({
+    ...match,
+  }));
+
+  const hasPreassignedCourts =
+    fixture.some((match) => match.court > 0);
+
+  if (hasPreassignedCourts) {
+    return schedulePreassignedCourts(
+      fixture,
+      startTime,
+      duration,
+      breaks
+    );
+  }
+
+  return scheduleNormal(
+    fixture,
+    courts,
+    startTime,
+    duration,
+    breaks
+  );
 }
