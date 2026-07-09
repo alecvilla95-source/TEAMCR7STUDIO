@@ -8,6 +8,7 @@ import TeamRegistration from "./features/teams/TeamRegistration";
 import FixtureView from "./features/fixture/FixtureView";
 import ResultsView from "./features/results/ResultsView";
 import OverlayView from "./features/overlay/OverlayView";
+import SettingsView from "./features/settings/SettingsView";
 
 export default function App() {
   const { page } = useApp();
@@ -48,7 +49,7 @@ export default function App() {
 
     case "settings":
       title = "Configuración";
-      content = <h2>Próximamente...</h2>;
+      content = <SettingsView />;
       break;
 
     default:
