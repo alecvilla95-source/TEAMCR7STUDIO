@@ -3,8 +3,22 @@ import { useState } from "react";
 import { useFixture } from "../../store/fixtureStore";
 import { useChampion } from "../../store/championStore";
 import { useOverlay } from "../../store/overlayStore";
+import { useTimer } from "../../store/timerStore";
+import { useTournament } from "../../store/tournamentStore";
 
 import { applyResult } from "../../engine/resultEngine";
+
+function formatTime(seconds: number) {
+  const minutes = Math.floor(seconds / 60)
+    .toString()
+    .padStart(2, "0");
+
+  const secs = (seconds % 60)
+    .toString()
+    .padStart(2, "0");
+
+  return `${minutes}:${secs}`;
+}
 
 export default function ResultsView() {
   const { fixture, setFixture } = useFixture();
@@ -12,6 +26,16 @@ export default function ResultsView() {
   const { champion, setChampion } = useChampion();
 
   const { activeMatchId, setActiveMatchId } = useOverlay();
+
+  const {
+    timer,
+    secondsLeft,
+    startTimer,
+    pauseTimer,
+    resetTimer,
+  } = useTimer();
+
+  const { tournament } = useTournament();
 
   const [scores, setScores] = useState<
     Record<number, { a: number; b: number }>
@@ -67,50 +91,109 @@ export default function ResultsView() {
     setFixture(updatedMatches);
   }
 
+  function showInOBS(matchId: number) {
+    setActiveMatchId(matchId);
+
+    const duration =
+      (tournament?.duration ?? 20) * 60;
+
+    resetTimer(duration);
+  }
+
   return (
     <div>
       <h2>Resultados</h2>
 
       <div
         style={{
-          display: "flex",
-          gap: 12,
+          background: "#0f172a",
+          border: "1px solid #334155",
+          borderRadius: 12,
+          padding: 20,
           marginBottom: 25,
-          flexWrap: "wrap",
         }}
       >
-        <button
-          onClick={() => setActiveMatchId(null)}
+        <h3
           style={{
-            padding: "12px 18px",
-            background: "#334155",
-            color: "white",
-            border: "none",
-            borderRadius: 8,
-            cursor: "pointer",
-            fontWeight: "bold",
+            marginTop: 0,
           }}
         >
-          🧹 LIMPIAR OBS
-        </button>
+          ⏱ Cronómetro OBS
+        </h3>
 
-        <button
-          onClick={() => {
-            const url = `${window.location.origin}?page=overlay`;
-            window.open(url, "_blank");
-          }}
+        <div
           style={{
-            padding: "12px 18px",
-            background: "#7c3aed",
-            color: "white",
-            border: "none",
-            borderRadius: 8,
-            cursor: "pointer",
+            fontSize: 42,
             fontWeight: "bold",
+            color: secondsLeft <= 10
+              ? "#ef4444"
+              : "#60a5fa",
+            marginBottom: 15,
           }}
         >
-          📺 ABRIR OVERLAY
-        </button>
+          {formatTime(secondsLeft)}
+        </div>
+
+        <div
+          style={{
+            display: "flex",
+            gap: 12,
+            flexWrap: "wrap",
+          }}
+        >
+          <button
+            onClick={startTimer}
+            style={greenButton}
+          >
+            ▶ INICIAR
+          </button>
+
+          <button
+            onClick={pauseTimer}
+            style={secondaryButton}
+          >
+            ⏸ PAUSAR
+          </button>
+
+          <button
+            onClick={() => resetTimer()}
+            style={secondaryButton}
+          >
+            🔄 REINICIAR
+          </button>
+
+          <button
+            onClick={() => setActiveMatchId(null)}
+            style={secondaryButton}
+          >
+            🧹 LIMPIAR OBS
+          </button>
+
+          <button
+            onClick={() => {
+              const url = `${window.location.origin}?page=overlay`;
+              window.open(url, "_blank");
+            }}
+            style={purpleButton}
+          >
+            📺 ABRIR OVERLAY
+          </button>
+        </div>
+
+        <p
+          style={{
+            color: "#94a3b8",
+            marginBottom: 0,
+            marginTop: 15,
+          }}
+        >
+          Estado:{" "}
+          <strong>
+            {timer.isRunning
+              ? "En marcha"
+              : "Pausado"}
+          </strong>
+        </p>
       </div>
 
       {champion && (
@@ -254,7 +337,7 @@ export default function ResultsView() {
 
               <button
                 disabled={!ready}
-                onClick={() => setActiveMatchId(match.id)}
+                onClick={() => showInOBS(match.id)}
                 style={{
                   padding: "10px 20px",
                   background: active
@@ -280,3 +363,33 @@ export default function ResultsView() {
     </div>
   );
 }
+
+const greenButton: React.CSSProperties = {
+  padding: "12px 18px",
+  background: "#16a34a",
+  color: "white",
+  border: "none",
+  borderRadius: 8,
+  cursor: "pointer",
+  fontWeight: "bold",
+};
+
+const secondaryButton: React.CSSProperties = {
+  padding: "12px 18px",
+  background: "#334155",
+  color: "white",
+  border: "none",
+  borderRadius: 8,
+  cursor: "pointer",
+  fontWeight: "bold",
+};
+
+const purpleButton: React.CSSProperties = {
+  padding: "12px 18px",
+  background: "#7c3aed",
+  color: "white",
+  border: "none",
+  borderRadius: 8,
+  cursor: "pointer",
+  fontWeight: "bold",
+};

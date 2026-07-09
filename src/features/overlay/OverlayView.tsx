@@ -2,6 +2,19 @@ import { useFixture } from "../../store/fixtureStore";
 import { useChampion } from "../../store/championStore";
 import { useTournament } from "../../store/tournamentStore";
 import { useOverlay } from "../../store/overlayStore";
+import { useTimer } from "../../store/timerStore";
+
+function formatTime(seconds: number) {
+  const minutes = Math.floor(seconds / 60)
+    .toString()
+    .padStart(2, "0");
+
+  const secs = (seconds % 60)
+    .toString()
+    .padStart(2, "0");
+
+  return `${minutes}:${secs}`;
+}
 
 export default function OverlayView() {
   const { fixture } = useFixture();
@@ -11,6 +24,8 @@ export default function OverlayView() {
   const { tournament } = useTournament();
 
   const { activeMatchId } = useOverlay();
+
+  const { secondsLeft, timer } = useTimer();
 
   const activeMatch = fixture.find(
     (match) => match.id === activeMatchId
@@ -74,7 +89,9 @@ export default function OverlayView() {
         </div>
 
         <div>
-          🕒 {match.time || "--:--"} | 🏟 Cancha {match.court || "-"}
+          ⏱ {formatTime(secondsLeft)}
+          {"  |  "}
+          🏟 Cancha {match.court || "-"}
         </div>
       </div>
 
@@ -107,6 +124,8 @@ export default function OverlayView() {
       <div style={bottomBar}>
         {match.status === "FINISHED"
           ? `🏆 Ganador: ${match.winner?.name ?? ""}`
+          : timer.isRunning
+          ? "PARTIDO EN VIVO"
           : activeMatchId
           ? "PARTIDO SELECCIONADO"
           : "PRÓXIMO PARTIDO"}
