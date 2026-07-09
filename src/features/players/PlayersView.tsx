@@ -13,6 +13,7 @@ import { usePlayers } from "../../store/playerStore";
 
 import {
   exportPlayerTemplate,
+  exportAllPlayerTemplates,
   importPlayersFromExcel,
 } from "../../services/excelService";
 
@@ -56,23 +57,31 @@ export default function PlayersView() {
   const fileRefs =
     useRef<Record<number, HTMLInputElement | null>>({});
 
-  const menTeams =
-    teams.filter(
-      (team) => team.category !== "WOMEN"
-    );
+  const menTeams = teams.filter(
+    (team) => team.category !== "WOMEN"
+  );
 
-  const womenTeams =
-    teams.filter(
-      (team) => team.category === "WOMEN"
-    );
+  const womenTeams = teams.filter(
+    (team) => team.category === "WOMEN"
+  );
 
-  function downloadTemplate(
-    team: Team
-  ) {
+  function downloadTemplate(team: Team) {
     exportPlayerTemplate({
-      tournamentName:
-        tournament?.name ?? "Campeonato",
+      tournamentName: tournament?.name ?? "Campeonato",
       team,
+      maxPlayers: 25,
+    });
+  }
+
+  function downloadAllTemplates() {
+    if (teams.length === 0) {
+      alert("No hay equipos registrados.");
+      return;
+    }
+
+    exportAllPlayerTemplates({
+      tournamentName: tournament?.name ?? "Campeonato",
+      teams,
       maxPlayers: 25,
     });
   }
@@ -81,22 +90,17 @@ export default function PlayersView() {
     event: React.ChangeEvent<HTMLInputElement>,
     team: Team
   ) {
-    const file =
-      event.target.files?.[0];
+    const file = event.target.files?.[0];
 
     if (!file) return;
 
     try {
-      const players =
-        await importPlayersFromExcel(
-          file,
-          team
-        );
-
-      setPlayersForTeam(
-        team.id,
-        players
+      const players = await importPlayersFromExcel(
+        file,
+        team
       );
+
+      setPlayersForTeam(team.id, players);
 
       alert(
         `${players.length} jugadores importados para ${team.name}.`
@@ -113,32 +117,51 @@ export default function PlayersView() {
   return (
     <div>
       <div style={headerBox}>
-        <h2
+        <div
           style={{
-            marginTop: 0,
+            display: "flex",
+            justifyContent: "space-between",
+            gap: 20,
+            flexWrap: "wrap",
+            alignItems: "center",
           }}
         >
-          👥 Registro de Jugadores
-        </h2>
+          <div>
+            <h2
+              style={{
+                marginTop: 0,
+              }}
+            >
+              👥 Registro de Jugadores
+            </h2>
 
-        <h1
-          style={{
-            marginTop: 0,
-            fontSize: 34,
-          }}
-        >
-          {tournament?.name ?? "TEAMCR7STUDIO"}
-        </h1>
+            <h1
+              style={{
+                marginTop: 0,
+                fontSize: 34,
+              }}
+            >
+              {tournament?.name ?? "TEAMCR7STUDIO"}
+            </h1>
 
-        <p
-          style={{
-            color: "#94a3b8",
-            marginBottom: 0,
-          }}
-        >
-          Descarga la ficha Excel de cada equipo, entrégala para que la
-          rellenen y luego súbela al sistema.
-        </p>
+            <p
+              style={{
+                color: "#94a3b8",
+                marginBottom: 0,
+              }}
+            >
+              Descarga la ficha Excel de cada equipo, entrégala para que la
+              rellenen y luego súbela al sistema.
+            </p>
+          </div>
+
+          <button
+            onClick={downloadAllTemplates}
+            style={allDownloadButton}
+          >
+            📥 Descargar todas las fichas Excel
+          </button>
+        </div>
       </div>
 
       <div style={summaryGrid}>
@@ -205,23 +228,18 @@ function TeamSection({
   teams: Team[];
   color: string;
   expandedTeamId: number | null;
-  setExpandedTeamId: (
-    teamId: number | null
-  ) => void;
+  setExpandedTeamId: (teamId: number | null) => void;
   fileRefs: React.MutableRefObject<
     Record<number, HTMLInputElement | null>
   >;
-  getPlayersByTeam: (
-    teamId: number
-  ) => Player[];
+  getPlayersByTeam: (teamId: number) => Player[];
   onDownload: (team: Team) => void;
   onUpload: (
     event: React.ChangeEvent<HTMLInputElement>,
     team: Team
   ) => void;
 }) {
-  const grouped =
-    groupTeamsByCourt(teams);
+  const grouped = groupTeamsByCourt(teams);
 
   return (
     <section
@@ -256,8 +274,7 @@ function TeamSection({
 
           <div style={teamGrid}>
             {group.teams.map((team) => {
-              const players =
-                getPlayersByTeam(team.id);
+              const players = getPlayersByTeam(team.id);
 
               const expanded =
                 expandedTeamId === team.id;
@@ -275,16 +292,11 @@ function TeamSection({
                     )
                   }
                   fileInputRef={(element) => {
-                    fileRefs.current[team.id] =
-                      element;
+                    fileRefs.current[team.id] = element;
                   }}
-                  onDownload={() =>
-                    onDownload(team)
-                  }
+                  onDownload={() => onDownload(team)}
                   onUploadClick={() =>
-                    fileRefs.current[
-                      team.id
-                    ]?.click()
+                    fileRefs.current[team.id]?.click()
                   }
                   onUpload={(event) =>
                     onUpload(event, team)
@@ -499,15 +511,11 @@ function SummaryBox({
   );
 }
 
-function groupTeamsByCourt(
-  teams: Team[]
-) {
-  const map =
-    new Map<number, Team[]>();
+function groupTeamsByCourt(teams: Team[]) {
+  const map = new Map<number, Team[]>();
 
   teams.forEach((team) => {
-    const court =
-      team.assignedCourt ?? 0;
+    const court = team.assignedCourt ?? 0;
 
     if (!map.has(court)) {
       map.set(court, []);
@@ -519,8 +527,7 @@ function groupTeamsByCourt(
   return Array.from(map.entries())
     .sort((a, b) => a[0] - b[0])
     .map(([court, list]) => {
-      const firstTeam =
-        list[0];
+      const firstTeam = list[0];
 
       const label =
         court === 0
@@ -563,6 +570,16 @@ const buttonGrid: CSSProperties = {
   gridTemplateColumns:
     "repeat(auto-fit, minmax(170px, 1fr))",
   gap: 10,
+};
+
+const allDownloadButton: CSSProperties = {
+  padding: "14px 18px",
+  background: "#f97316",
+  color: "white",
+  border: "none",
+  borderRadius: 10,
+  cursor: "pointer",
+  fontWeight: "bold",
 };
 
 const downloadButton: CSSProperties = {
