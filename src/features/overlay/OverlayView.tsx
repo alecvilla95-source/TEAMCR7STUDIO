@@ -81,6 +81,10 @@ export default function OverlayView() {
     );
   }
 
+  const hasPenalties =
+    match.penaltyA !== undefined &&
+    match.penaltyB !== undefined;
+
   return (
     <div style={overlayContainer}>
       <div style={topBar}>
@@ -104,6 +108,12 @@ export default function OverlayView() {
           <div style={score}>
             {match.scoreA}
           </div>
+
+          {hasPenalties && (
+            <div style={penaltyScore}>
+              Penales: {match.penaltyA}
+            </div>
+          )}
         </div>
 
         <div style={vsBox}>
@@ -118,8 +128,22 @@ export default function OverlayView() {
           <div style={score}>
             {match.scoreB}
           </div>
+
+          {hasPenalties && (
+            <div style={penaltyScore}>
+              Penales: {match.penaltyB}
+            </div>
+          )}
         </div>
       </div>
+
+      {hasPenalties && (
+        <div style={penaltyBanner}>
+          ⚽ Definido por penales:
+          {" "}
+          {match.penaltyA} - {match.penaltyB}
+        </div>
+      )}
 
       <div style={bottomBar}>
         {match.status === "FINISHED"
@@ -190,11 +214,32 @@ const score: React.CSSProperties = {
   color: "#60a5fa",
 };
 
+const penaltyScore: React.CSSProperties = {
+  marginTop: 10,
+  fontSize: 24,
+  fontWeight: "bold",
+  color: "#facc15",
+};
+
 const vsBox: React.CSSProperties = {
   fontSize: 38,
   fontWeight: "bold",
   textAlign: "center",
   color: "#facc15",
+};
+
+const penaltyBanner: React.CSSProperties = {
+  marginTop: 25,
+  width: "100%",
+  maxWidth: 1000,
+  background: "#713f12",
+  border: "1px solid #facc15",
+  color: "#fef3c7",
+  borderRadius: 14,
+  padding: 18,
+  textAlign: "center",
+  fontSize: 24,
+  fontWeight: "bold",
 };
 
 const bottomBar: React.CSSProperties = {
