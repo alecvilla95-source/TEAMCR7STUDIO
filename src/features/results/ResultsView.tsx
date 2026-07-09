@@ -41,17 +41,50 @@ export default function ResultsView() {
     Record<number, { a: number; b: number }>
   >({});
 
+  function getScore(
+    matchId: number,
+    team: "a" | "b"
+  ) {
+    const match = fixture.find(
+      (item) => item.id === matchId
+    );
+
+    if (!match) return 0;
+
+    if (team === "a") {
+      return scores[matchId]?.a ?? match.scoreA;
+    }
+
+    return scores[matchId]?.b ?? match.scoreB;
+  }
+
   function updateScore(
     matchId: number,
     team: "a" | "b",
     value: number
   ) {
-    setScores({
-      ...scores,
-      [matchId]: {
-        ...scores[matchId],
-        [team]: value,
-      },
+    const cleanValue = Math.max(
+      0,
+      Number.isNaN(value) ? 0 : value
+    );
+
+    setScores((currentScores) => {
+      const match = fixture.find(
+        (item) => item.id === matchId
+      );
+
+      const previous = currentScores[matchId] ?? {
+        a: match?.scoreA ?? 0,
+        b: match?.scoreB ?? 0,
+      };
+
+      return {
+        ...currentScores,
+        [matchId]: {
+          ...previous,
+          [team]: cleanValue,
+        },
+      };
     });
 
     if (activeMatchId === matchId) {
@@ -62,11 +95,11 @@ export default function ResultsView() {
           ...match,
           scoreA:
             team === "a"
-              ? value
+              ? cleanValue
               : match.scoreA,
           scoreB:
             team === "b"
-              ? value
+              ? cleanValue
               : match.scoreB,
         };
       });
@@ -75,17 +108,42 @@ export default function ResultsView() {
     }
   }
 
+  function addGoal(
+    matchId: number,
+    team: "a" | "b"
+  ) {
+    const current = getScore(
+      matchId,
+      team
+    );
+
+    updateScore(
+      matchId,
+      team,
+      current + 1
+    );
+  }
+
+  function removeGoal(
+    matchId: number,
+    team: "a" | "b"
+  ) {
+    const current = getScore(
+      matchId,
+      team
+    );
+
+    updateScore(
+      matchId,
+      team,
+      Math.max(0, current - 1)
+    );
+  }
+
   function saveResult(matchId: number) {
     const currentMatch = fixture.find(
       (match) => match.id === matchId
     );
-
-    const result =
-      scores[matchId] ??
-      {
-        a: currentMatch?.scoreA ?? 0,
-        b: currentMatch?.scoreB ?? 0,
-      };
 
     if (!currentMatch) {
       alert("No se encontró el partido.");
@@ -96,6 +154,11 @@ export default function ResultsView() {
       alert("Este partido aún no está listo.");
       return;
     }
+
+    const result = scores[matchId] ?? {
+      a: currentMatch.scoreA,
+      b: currentMatch.scoreB,
+    };
 
     if (result.a === result.b) {
       alert("No se permiten empates.");
@@ -295,68 +358,99 @@ export default function ResultsView() {
 
             <div
               style={{
-                display: "flex",
+                display: "grid",
+                gridTemplateColumns: "1fr auto",
                 gap: 15,
-                marginTop: 15,
+                marginTop: 20,
                 alignItems: "center",
               }}
             >
-              <input
-                type="number"
-                min={0}
-                disabled={finished || !ready}
-                value={
-                  scores[match.id]?.a ??
-                  match.scoreA
-                }
-                onChange={(e) =>
-                  updateScore(
-                    match.id,
-                    "a",
-                    Number(e.target.value)
-                  )
-                }
-                style={scoreInput}
-              />
+              <strong>
+                {match.teamA?.name ?? "Equipo A"}
+              </strong>
 
-              <span
+              <div style={scoreControls}>
+                <button
+                  disabled={finished || !ready}
+                  onClick={() => removeGoal(match.id, "a")}
+                  style={scoreButton}
+                >
+                  -
+                </button>
+
+                <input
+                  type="number"
+                  min={0}
+                  disabled={finished || !ready}
+                  value={getScore(match.id, "a")}
+                  onChange={(e) =>
+                    updateScore(
+                      match.id,
+                      "a",
+                      Number(e.target.value)
+                    )
+                  }
+                  style={scoreInput}
+                />
+
+                <button
+                  disabled={finished || !ready}
+                  onClick={() => addGoal(match.id, "a")}
+                  style={scoreButton}
+                >
+                  +
+                </button>
+              </div>
+
+              <strong>
+                {match.teamB?.name ?? "Equipo B"}
+              </strong>
+
+              <div style={scoreControls}>
+                <button
+                  disabled={finished || !ready}
+                  onClick={() => removeGoal(match.id, "b")}
+                  style={scoreButton}
+                >
+                  -
+                </button>
+
+                <input
+                  type="number"
+                  min={0}
+                  disabled={finished || !ready}
+                  value={getScore(match.id, "b")}
+                  onChange={(e) =>
+                    updateScore(
+                      match.id,
+                      "b",
+                      Number(e.target.value)
+                    )
+                  }
+                  style={scoreInput}
+                />
+
+                <button
+                  disabled={finished || !ready}
+                  onClick={() => addGoal(match.id, "b")}
+                  style={scoreButton}
+                >
+                  +
+                </button>
+              </div>
+            </div>
+
+            {active && !finished && (
+              <div
                 style={{
+                  marginTop: 15,
+                  color: "#facc15",
                   fontWeight: "bold",
-                  color: "#94a3b8",
                 }}
               >
-                -
-              </span>
-
-              <input
-                type="number"
-                min={0}
-                disabled={finished || !ready}
-                value={
-                  scores[match.id]?.b ??
-                  match.scoreB
-                }
-                onChange={(e) =>
-                  updateScore(
-                    match.id,
-                    "b",
-                    Number(e.target.value)
-                  )
-                }
-                style={scoreInput}
-              />
-
-              {active && !finished && (
-                <span
-                  style={{
-                    color: "#facc15",
-                    fontWeight: "bold",
-                  }}
-                >
-                  Marcador en vivo
-                </span>
-              )}
-            </div>
+                Marcador en vivo para OBS
+              </div>
+            )}
 
             <div
               style={{
@@ -428,6 +522,12 @@ export default function ResultsView() {
   );
 }
 
+const scoreControls: React.CSSProperties = {
+  display: "flex",
+  gap: 8,
+  alignItems: "center",
+};
+
 const scoreInput: React.CSSProperties = {
   width: 70,
   padding: 10,
@@ -436,6 +536,18 @@ const scoreInput: React.CSSProperties = {
   textAlign: "center",
   borderRadius: 8,
   border: "1px solid #334155",
+};
+
+const scoreButton: React.CSSProperties = {
+  width: 38,
+  height: 38,
+  borderRadius: 8,
+  border: "none",
+  background: "#334155",
+  color: "white",
+  cursor: "pointer",
+  fontSize: 20,
+  fontWeight: "bold",
 };
 
 const greenButton: React.CSSProperties = {
