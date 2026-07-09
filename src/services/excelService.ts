@@ -3,8 +3,23 @@ import * as XLSX from "xlsx";
 import type { Team } from "../types/team";
 import type { Player } from "../types/player";
 
+export interface ImportedTeamPlayers {
+  team: Team;
+  players: Player[];
+  sheetName: string;
+}
+
 function cleanText(value: unknown) {
   return String(value ?? "").trim();
+}
+
+function normalizeText(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toUpperCase()
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function sanitizeFileName(value: string) {
@@ -16,10 +31,12 @@ function sanitizeFileName(value: string) {
 }
 
 function sanitizeSheetName(value: string) {
-  return value
-    .replace(/[\\/?*[\]:]/g, "")
-    .substring(0, 25)
-    .trim() || "Equipo";
+  return (
+    value
+      .replace(/[\\/?*[\]:]/g, "")
+      .substring(0, 25)
+      .trim() || "Equipo"
+  );
 }
 
 function getUniqueSheetName(
@@ -31,10 +48,12 @@ function getUniqueSheetName(
 
   while (usedNames.has(name)) {
     const suffix = `_${counter}`;
+
     name = `${sanitizeSheetName(baseName).substring(
       0,
       31 - suffix.length
     )}${suffix}`;
+
     counter++;
   }
 
@@ -154,6 +173,138 @@ function createPlayerTemplateSheet({
   return worksheet;
 }
 
+function getMetaValue(
+  rows: Array<Array<string | number>>,
+  label: string
+) {
+  const target = normalizeText(label);
+
+  const row = rows.find((item) => {
+    return normalizeText(cleanText(item[0])) === target;
+  });
+
+  return cleanText(row?.[1]);
+}
+
+function getCategoryFromMeta(value: string) {
+  const normalized = normalizeText(value);
+
+  if (normalized.includes("MUJER")) {
+    return "WOMEN";
+  }
+
+  if (
+    normalized.includes("VARON") ||
+    normalized.includes("HOMBRE")
+  ) {
+    return "MEN";
+  }
+
+  return undefined;
+}
+
+function getCourtNumberFromMeta(value: string) {
+  const match = value.match(/\d+/);
+
+  if (!match) return undefined;
+
+  return Number(match[0]);
+}
+
+function findTeamForSheet(
+  rows: Array<Array<string | number>>,
+  teams: Team[]
+) {
+  const teamName = getMetaValue(rows, "Equipo");
+
+  const categoryText = getMetaValue(rows, "Categoría");
+
+  const courtText = getMetaValue(rows, "Cancha");
+
+  const category = getCategoryFromMeta(categoryText);
+
+  const courtNumber = getCourtNumberFromMeta(courtText);
+
+  if (!teamName) return null;
+
+  let candidates = teams.filter(
+    (team) =>
+      normalizeText(team.name) === normalizeText(teamName)
+  );
+
+  if (category) {
+    candidates = candidates.filter(
+      (team) => (team.category ?? "MEN") === category
+    );
+  }
+
+  if (courtNumber) {
+    candidates = candidates.filter(
+      (team) => team.assignedCourt === courtNumber
+    );
+  }
+
+  return candidates[0] ?? null;
+}
+
+function getRowsFromSheet(sheet: XLSX.WorkSheet) {
+  return XLSX.utils.sheet_to_json(sheet, {
+    header: 1,
+    defval: "",
+  }) as Array<Array<string | number>>;
+}
+
+function parsePlayersFromRows(
+  rows: Array<Array<string | number>>,
+  team: Team
+): Player[] {
+  const headerIndex = rows.findIndex((row) => {
+    const secondColumn = normalizeText(cleanText(row[1]));
+
+    const thirdColumn = normalizeText(cleanText(row[2]));
+
+    return (
+      secondColumn.includes("NOMBRES") ||
+      secondColumn.includes("JUGADOR") ||
+      thirdColumn.includes("DOCUMENTO")
+    );
+  });
+
+  const startIndex = headerIndex >= 0 ? headerIndex + 1 : 8;
+
+  return rows
+    .slice(startIndex)
+    .map((row) => {
+      const name = cleanText(row[1]);
+
+      const documentId = cleanText(row[2]);
+
+      const jerseyNumber = cleanText(row[3]);
+
+      return {
+        id: generateId(),
+
+        teamId: team.id,
+
+        teamName: team.name,
+
+        category: team.category ?? "MEN",
+
+        name,
+
+        documentId,
+
+        jerseyNumber,
+      };
+    })
+    .filter(
+      (player) =>
+        player.name ||
+        player.documentId ||
+        player.jerseyNumber
+    );
+}
+
 export async function importTeamsFromExcel(
   file: File
 ): Promise<string[]> {
@@ -165,15 +316,12 @@ export async function importTeamsFromExcel(
 
   const sheet = workbook.Sheets[sheetName];
 
-  const rows = XLSX.utils.sheet_to_json(sheet, {
-    header: 1,
-    defval: "",
-  }) as Array<Array<string | number>>;
+  const rows = getRowsFromSheet(sheet);
 
   return rows
     .map((row) => cleanText(row[0]))
     .filter((name) => {
-      const upper = name.toUpperCase();
+      const upper = normalizeText(name);
 
       if (!name) return false;
 
@@ -290,54 +438,38 @@ export async function importPlayersFromExcel(
 
   const sheet = workbook.Sheets[sheetName];
 
-  const rows = XLSX.utils.sheet_to_json(sheet, {
-    header: 1,
-    defval: "",
-  }) as Array<Array<string | number>>;
+  const rows = getRowsFromSheet(sheet);
 
-  const headerIndex = rows.findIndex((row) => {
-    const secondColumn = cleanText(row[1]).toUpperCase();
+  return parsePlayersFromRows(rows, team);
+}
 
-    const thirdColumn = cleanText(row[2]).toUpperCase();
+export async function importAllPlayersFromExcel(
+  file: File,
+  teams: Team[]
+): Promise<ImportedTeamPlayers[]> {
+  const data = await file.arrayBuffer();
 
-    return (
-      secondColumn.includes("NOMBRES") ||
-      secondColumn.includes("JUGADOR") ||
-      thirdColumn.includes("DOCUMENTO")
-    );
+  const workbook = XLSX.read(data);
+
+  const imported: ImportedTeamPlayers[] = [];
+
+  workbook.SheetNames.forEach((sheetName) => {
+    const sheet = workbook.Sheets[sheetName];
+
+    const rows = getRowsFromSheet(sheet);
+
+    const team = findTeamForSheet(rows, teams);
+
+    if (!team) return;
+
+    const players = parsePlayersFromRows(rows, team);
+
+    imported.push({
+      team,
+      players,
+      sheetName,
+    });
   });
 
-  const startIndex = headerIndex >= 0 ? headerIndex + 1 : 8;
-
-  return rows
-    .slice(startIndex)
-    .map((row) => {
-      const name = cleanText(row[1]);
-
-      const documentId = cleanText(row[2]);
-
-      const jerseyNumber = cleanText(row[3]);
-
-      return {
-        id: generateId(),
-
-        teamId: team.id,
-
-        teamName: team.name,
-
-        category: team.category ?? "MEN",
-
-        name,
-
-        documentId,
-
-        jerseyNumber,
-      };
-    })
-    .filter(
-      (player) =>
-        player.name ||
-        player.documentId ||
-        player.jerseyNumber
-    );
+  return imported;
 }

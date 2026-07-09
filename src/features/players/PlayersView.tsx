@@ -15,6 +15,7 @@ import {
   exportPlayerTemplate,
   exportAllPlayerTemplates,
   importPlayersFromExcel,
+  importAllPlayersFromExcel,
 } from "../../services/excelService";
 
 function getCategoryColor(team: Team) {
@@ -47,6 +48,8 @@ export default function PlayersView() {
   const { teams } = useTeams();
 
   const {
+    players,
+    setPlayers,
     getPlayersByTeam,
     setPlayersForTeam,
   } = usePlayers();
@@ -56,6 +59,9 @@ export default function PlayersView() {
 
   const fileRefs =
     useRef<Record<number, HTMLInputElement | null>>({});
+
+  const allUploadRef =
+    useRef<HTMLInputElement | null>(null);
 
   const menTeams = teams.filter(
     (team) => team.category !== "WOMEN"
@@ -84,6 +90,55 @@ export default function PlayersView() {
       teams,
       maxPlayers: 25,
     });
+  }
+
+  async function uploadAllTemplates(
+    event: React.ChangeEvent<HTMLInputElement>
+  ) {
+    const file = event.target.files?.[0];
+
+    if (!file) return;
+
+    try {
+      const imported = await importAllPlayersFromExcel(
+        file,
+        teams
+      );
+
+      if (imported.length === 0) {
+        alert(
+          "No se encontró ninguna ficha válida. Asegúrate de no borrar las filas de Equipo, Categoría y Cancha."
+        );
+        return;
+      }
+
+      const importedTeamIds = new Set(
+        imported.map((item) => item.team.id)
+      );
+
+      const newPlayers = imported.flatMap(
+        (item) => item.players
+      );
+
+      const remainingPlayers = players.filter(
+        (player) => !importedTeamIds.has(player.teamId)
+      );
+
+      setPlayers([
+        ...remainingPlayers,
+        ...newPlayers,
+      ]);
+
+      alert(
+        `${newPlayers.length} jugadores importados en ${imported.length} equipos.`
+      );
+    } catch {
+      alert(
+        "No se pudo leer el Excel con todas las fichas."
+      );
+    } finally {
+      event.target.value = "";
+    }
   }
 
   async function uploadTemplate(
@@ -150,17 +205,36 @@ export default function PlayersView() {
                 marginBottom: 0,
               }}
             >
-              Descarga la ficha Excel de cada equipo, entrégala para que la
-              rellenen y luego súbela al sistema.
+              Descarga las fichas Excel, entrégalas para que las rellenen y
+              luego súbelas al sistema.
             </p>
           </div>
 
-          <button
-            onClick={downloadAllTemplates}
-            style={allDownloadButton}
-          >
-            📥 Descargar todas las fichas Excel
-          </button>
+          <div style={headerActions}>
+            <button
+              onClick={downloadAllTemplates}
+              style={allDownloadButton}
+            >
+              📥 Descargar todas las fichas Excel
+            </button>
+
+            <input
+              ref={allUploadRef}
+              type="file"
+              accept=".xlsx,.xls"
+              style={{
+                display: "none",
+              }}
+              onChange={uploadAllTemplates}
+            />
+
+            <button
+              onClick={() => allUploadRef.current?.click()}
+              style={allUploadButton}
+            >
+              📤 Subir todas las fichas llenas
+            </button>
+          </div>
         </div>
       </div>
 
@@ -551,6 +625,12 @@ const headerBox: CSSProperties = {
   marginBottom: 25,
 };
 
+const headerActions: CSSProperties = {
+  display: "flex",
+  gap: 12,
+  flexWrap: "wrap",
+};
+
 const summaryGrid: CSSProperties = {
   display: "grid",
   gridTemplateColumns:
@@ -575,6 +655,16 @@ const buttonGrid: CSSProperties = {
 const allDownloadButton: CSSProperties = {
   padding: "14px 18px",
   background: "#f97316",
+  color: "white",
+  border: "none",
+  borderRadius: 10,
+  cursor: "pointer",
+  fontWeight: "bold",
+};
+
+const allUploadButton: CSSProperties = {
+  padding: "14px 18px",
+  background: "#2563eb",
   color: "white",
   border: "none",
   borderRadius: 10,
