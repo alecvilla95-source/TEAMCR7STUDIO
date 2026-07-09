@@ -26,6 +26,10 @@ export default function Dashboard() {
   const pendingMatches =
     totalMatches - finishedMatches;
 
+  const playingMatch = fixture.find(
+    (match) => match.status === "PLAYING"
+  );
+
   const nextMatch = fixture.find(
     (match) =>
       match.status !== "FINISHED" &&
@@ -173,7 +177,45 @@ export default function Dashboard() {
         />
       </div>
 
-      {nextMatch && (
+      {playingMatch && (
+        <div
+          style={{
+            background: "#052e16",
+            border: "1px solid #22c55e",
+            padding: 20,
+            borderRadius: 14,
+            marginBottom: 30,
+          }}
+        >
+          <h3
+            style={{
+              marginTop: 0,
+              color: "#86efac",
+            }}
+          >
+            🟢 Partido en juego
+          </h3>
+
+          <p
+            style={{
+              fontSize: 20,
+              fontWeight: "bold",
+            }}
+          >
+            {playingMatch.teamA?.name} VS {playingMatch.teamB?.name}
+          </p>
+
+          <p
+            style={{
+              color: "#bbf7d0",
+            }}
+          >
+            🕒 {playingMatch.time} | 🏟 Cancha {playingMatch.court}
+          </p>
+        </div>
+      )}
+
+      {!playingMatch && nextMatch && (
         <div
           style={{
             background: "#0f172a",
@@ -245,38 +287,70 @@ export default function Dashboard() {
 
       <div
         style={{
-          display: "flex",
-          gap: 15,
-          flexWrap: "wrap",
+          background: "#1e293b",
+          border: "1px solid #334155",
+          padding: 25,
+          borderRadius: 14,
         }}
       >
-        <button
-          onClick={() => setPage("fixture")}
-          style={primaryButton}
+        <h3
+          style={{
+            marginTop: 0,
+            marginBottom: 20,
+          }}
         >
-          📅 VER FIXTURE
-        </button>
+          Accesos rápidos
+        </h3>
 
-        <button
-          onClick={() => setPage("results")}
-          style={secondaryButton}
+        <div
+          style={{
+            display: "flex",
+            gap: 15,
+            flexWrap: "wrap",
+          }}
         >
-          📊 RESULTADOS
-        </button>
+          <button
+            onClick={() => setPage("fixture")}
+            style={primaryButton}
+          >
+            📅 FIXTURE
+          </button>
 
-        <button
-          onClick={() => setPage("tournament")}
-          style={secondaryButton}
-        >
-          🏆 NUEVO CAMPEONATO
-        </button>
+          <button
+            onClick={() => setPage("results")}
+            style={secondaryButton}
+          >
+            📊 RESULTADOS
+          </button>
 
-        <button
-          onClick={resetTournament}
-          style={dangerButton}
-        >
-          🗑 BORRAR DATOS
-        </button>
+          <button
+            onClick={() => setPage("overlay")}
+            style={purpleButton}
+          >
+            📺 OVERLAY OBS
+          </button>
+
+          <button
+            onClick={() => setPage("settings")}
+            style={secondaryButton}
+          >
+            ⚙ CONFIGURACIÓN
+          </button>
+
+          <button
+            onClick={() => setPage("tournament")}
+            style={secondaryButton}
+          >
+            🏆 NUEVO CAMPEONATO
+          </button>
+
+          <button
+            onClick={resetTournament}
+            style={dangerButton}
+          >
+            🗑 BORRAR DATOS
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -345,6 +419,16 @@ const secondaryButton: React.CSSProperties = {
   background: "#1e293b",
   color: "white",
   border: "1px solid #334155",
+  borderRadius: 10,
+  cursor: "pointer",
+  fontWeight: "bold",
+};
+
+const purpleButton: React.CSSProperties = {
+  padding: "14px 22px",
+  background: "#7c3aed",
+  color: "white",
+  border: "none",
   borderRadius: 10,
   cursor: "pointer",
   fontWeight: "bold",
