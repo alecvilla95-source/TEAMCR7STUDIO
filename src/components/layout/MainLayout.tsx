@@ -5,6 +5,10 @@ import {
   type Page,
 } from "../../store/appStore";
 
+import { useTournament } from "../../store/tournamentStore";
+import { useChampion } from "../../store/championStore";
+import { useFixture } from "../../store/fixtureStore";
+
 interface Props {
   title: string;
   children: ReactNode;
@@ -57,6 +61,20 @@ export default function MainLayout({
   children,
 }: Props) {
   const { page, setPage } = useApp();
+
+  const { tournament } = useTournament();
+
+  const { champion } = useChampion();
+
+  const { fixture } = useFixture();
+
+  const playingMatch = fixture.find(
+    (match) => match.status === "PLAYING"
+  );
+
+  const pendingMatches = fixture.filter(
+    (match) => match.status !== "FINISHED"
+  ).length;
 
   return (
     <div
@@ -185,14 +203,95 @@ export default function MainLayout({
         <header
           style={{
             marginBottom: 30,
-            borderBottom: "1px solid #1e293b",
-            paddingBottom: 20,
           }}
         >
+          <div
+            style={{
+              background: "#020617",
+              border: "1px solid #1e293b",
+              borderRadius: 14,
+              padding: "16px 20px",
+              marginBottom: 22,
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              gap: 20,
+              flexWrap: "wrap",
+            }}
+          >
+            <div>
+              <div
+                style={{
+                  color: "#94a3b8",
+                  fontSize: 13,
+                  marginBottom: 4,
+                }}
+              >
+                Campeonato activo
+              </div>
+
+              <div
+                style={{
+                  fontSize: 18,
+                  fontWeight: "bold",
+                }}
+              >
+                {tournament?.name ?? "Sin campeonato"}
+              </div>
+            </div>
+
+            <div
+              style={{
+                display: "flex",
+                gap: 12,
+                flexWrap: "wrap",
+                alignItems: "center",
+              }}
+            >
+              {playingMatch && (
+                <Badge
+                  color="#22c55e"
+                  text={`🟢 En juego: Partido ${playingMatch.id}`}
+                />
+              )}
+
+              {!playingMatch && pendingMatches > 0 && (
+                <Badge
+                  color="#facc15"
+                  text={`⏳ Pendientes: ${pendingMatches}`}
+                />
+              )}
+
+              {champion && (
+                <Badge
+                  color="#facc15"
+                  text={`🏆 Campeón: ${champion.name}`}
+                />
+              )}
+
+              <button
+                onClick={() => setPage("overlay")}
+                style={{
+                  padding: "10px 14px",
+                  background: "#7c3aed",
+                  color: "white",
+                  border: "none",
+                  borderRadius: 8,
+                  cursor: "pointer",
+                  fontWeight: "bold",
+                }}
+              >
+                📺 Overlay
+              </button>
+            </div>
+          </div>
+
           <h1
             style={{
               margin: 0,
               fontSize: 34,
+              borderBottom: "1px solid #1e293b",
+              paddingBottom: 20,
             }}
           >
             {title}
@@ -202,5 +301,28 @@ export default function MainLayout({
         {children}
       </main>
     </div>
+  );
+}
+
+function Badge({
+  color,
+  text,
+}: {
+  color: string;
+  text: string;
+}) {
+  return (
+    <span
+      style={{
+        background: color,
+        color: "#111827",
+        padding: "8px 12px",
+        borderRadius: 999,
+        fontSize: 13,
+        fontWeight: "bold",
+      }}
+    >
+      {text}
+    </span>
   );
 }
