@@ -1,11 +1,13 @@
 import { useState } from "react";
 
 import { useFixture } from "../../store/fixtureStore";
+import { useChampion } from "../../store/championStore";
 
 import { applyResult } from "../../engine/resultEngine";
 
 export default function ResultsView() {
   const { fixture, setFixture } = useFixture();
+  const { champion, setChampion } = useChampion();
 
   const [scores, setScores] = useState<
     Record<number, { a: number; b: number }>
@@ -45,6 +47,19 @@ export default function ResultsView() {
       result.b
     );
 
+    const finishedMatch = updatedMatches.find(
+      (match) => match.id === matchId
+    );
+
+    if (
+      finishedMatch &&
+      finishedMatch.winner &&
+      !finishedMatch.nextMatchId
+    ) {
+      setChampion(finishedMatch.winner);
+      alert(`🏆 Campeón: ${finishedMatch.winner.name}`);
+    }
+
     setFixture(updatedMatches);
   }
 
@@ -52,12 +67,24 @@ export default function ResultsView() {
     <div>
       <h2>Resultados</h2>
 
-      {fixture.map((match) => {
-        const finished =
-          match.status === "FINISHED";
+      {champion && (
+        <div
+          style={{
+            background: "#713f12",
+            color: "#fef3c7",
+            padding: 20,
+            borderRadius: 12,
+            marginBottom: 25,
+            fontSize: 22,
+            fontWeight: "bold",
+          }}
+        >
+          🏆 CAMPEÓN: {champion.name}
+        </div>
+      )}
 
-        const ready =
-          Boolean(match.teamA && match.teamB);
+      {fixture.map((match) => {
+        const finished = match.status === "FINISHED";
 
         return (
           <div
@@ -69,10 +96,7 @@ export default function ResultsView() {
               marginBottom: 25,
               border: finished
                 ? "2px solid #16a34a"
-                : ready
-                ? "1px solid #60a5fa"
                 : "1px solid #334155",
-              opacity: ready || finished ? 1 : 0.55,
             }}
           >
             <h3>Partido {match.id}</h3>
@@ -93,11 +117,8 @@ export default function ResultsView() {
               <input
                 type="number"
                 min={0}
-                disabled={finished || !ready}
-                value={
-                  scores[match.id]?.a ??
-                  match.scoreA
-                }
+                disabled={finished || !match.teamA || !match.teamB}
+                value={scores[match.id]?.a ?? match.scoreA}
                 onChange={(e) =>
                   updateScore(
                     match.id,
@@ -110,11 +131,8 @@ export default function ResultsView() {
               <input
                 type="number"
                 min={0}
-                disabled={finished || !ready}
-                value={
-                  scores[match.id]?.b ??
-                  match.scoreB
-                }
+                disabled={finished || !match.teamA || !match.teamB}
+                value={scores[match.id]?.b ?? match.scoreB}
                 onChange={(e) =>
                   updateScore(
                     match.id,
@@ -127,16 +145,22 @@ export default function ResultsView() {
 
             {!finished ? (
               <button
-                disabled={!ready}
+                disabled={!match.teamA || !match.teamB}
                 onClick={() => saveResult(match.id)}
                 style={{
                   marginTop: 20,
                   padding: "10px 20px",
-                  background: ready ? "#2563eb" : "#475569",
+                  background:
+                    !match.teamA || !match.teamB
+                      ? "#475569"
+                      : "#2563eb",
                   color: "white",
                   border: "none",
                   borderRadius: 8,
-                  cursor: ready ? "pointer" : "not-allowed",
+                  cursor:
+                    !match.teamA || !match.teamB
+                      ? "not-allowed"
+                      : "pointer",
                 }}
               >
                 GUARDAR RESULTADO
