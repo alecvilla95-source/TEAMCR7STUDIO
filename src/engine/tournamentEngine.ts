@@ -23,11 +23,15 @@ export function buildTournament(
 ): Match[] {
   let matches: Match[] = [];
 
+  const totalCourts =
+    tournament.courts +
+    (tournament.womenCourts ?? 0);
+
   if (tournament.mode === "GROUPS") {
     matches = buildGroupStage(teams);
   } else if (
     tournament.courtMode === "SEPARATE_BRACKETS" &&
-    tournament.courts > 1
+    totalCourts > 1
   ) {
     const menTeams = teams.filter(
       (team) => team.category !== "WOMEN"
@@ -38,19 +42,22 @@ export function buildTournament(
     );
 
     const menMatches =
-      buildCourtBrackets(
-        menTeams,
-        tournament.courts,
-        {
-          startId: 1,
-          category: "MEN",
-          courtLabelPrefix: "Cancha",
-          finalLabel: "Final Varones",
-        }
-      );
+      menTeams.length >= 2
+        ? buildCourtBrackets(
+            menTeams,
+            tournament.courts,
+            {
+              startId: 1,
+              category: "MEN",
+              courtLabelPrefix: "Cancha",
+              finalLabel: "Final Varones",
+            }
+          )
+        : [];
 
     const womenMatches =
-      tournament.womenCourts > 0
+      tournament.womenCourts > 0 &&
+      womenTeams.length >= 2
         ? buildCourtBrackets(
             womenTeams,
             tournament.womenCourts,
@@ -73,8 +80,7 @@ export function buildTournament(
 
   return scheduleMatches(
     matches,
-    tournament.courts +
-      (tournament.womenCourts ?? 0),
+    totalCourts,
     tournament.startTime,
     tournament.duration,
     tournament.breaks

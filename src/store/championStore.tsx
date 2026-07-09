@@ -1,7 +1,6 @@
 import {
   createContext,
   useContext,
-  useEffect,
   useState,
   type ReactNode,
 } from "react";
@@ -13,9 +12,85 @@ import {
   saveData,
 } from "../services/storageService";
 
+export type ChampionCategory =
+  | "MEN"
+  | "WOMEN"
+  | "GENERAL";
+
+export type Champions = Record<
+  ChampionCategory,
+  Team | null
+>;
+
 interface ChampionContextType {
   champion: Team | null;
-  setChampion: (team: Team | null) => void;
+
+  champions: Champions;
+
+  setChampion: (
+    team: Team | null,
+    category?: ChampionCategory
+  ) => void;
+}
+
+function emptyChampions(): Champions {
+  return {
+    MEN: null,
+    WOMEN: null,
+    GENERAL: null,
+  };
+}
+
+function normalizeChampions(
+  value: unknown
+): Champions {
+  if (
+    value &&
+    typeof value === "object" &&
+    (
+      "MEN" in value ||
+      "WOMEN" in value ||
+      "GENERAL" in value
+    )
+  ) {
+    const data = value as Partial<Champions>;
+
+    return {
+      MEN: data.MEN ?? null,
+      WOMEN: data.WOMEN ?? null,
+      GENERAL: data.GENERAL ?? null,
+    };
+  }
+
+  if (
+    value &&
+    typeof value === "object" &&
+    "name" in value
+  ) {
+    return {
+      ...emptyChampions(),
+      GENERAL: value as Team,
+    };
+  }
+
+  return emptyChampions();
+}
+
+function getCategoryFromTeam(
+  team: Team | null,
+  category?: ChampionCategory
+): ChampionCategory {
+  if (category) return category;
+
+  if (team?.category === "WOMEN") {
+    return "WOMEN";
+  }
+
+  if (team?.category === "MEN") {
+    return "MEN";
+  }
+
+  return "GENERAL";
 }
 
 const ChampionContext =
@@ -23,59 +98,68 @@ const ChampionContext =
     {} as ChampionContextType
   );
 
-const STORAGE_KEY = "teamcr7studio_champion";
-
 export function ChampionProvider({
   children,
 }: {
   children: ReactNode;
 }) {
-  const [champion, setChampionState] =
-    useState<Team | null>(() =>
-      loadData<Team | null>(
-        "champion",
-        null
+  const [champions, setChampions] =
+    useState<Champions>(() =>
+      normalizeChampions(
+        loadData<unknown>(
+          "champion",
+          emptyChampions()
+        )
       )
     );
 
-  function setChampion(team: Team | null) {
-    setChampionState(team);
+  const champion =
+    champions.GENERAL ??
+    champions.MEN ??
+    champions.WOMEN ??
+    null;
+
+  function setChampion(
+    team: Team | null,
+    category?: ChampionCategory
+  ) {
+    if (!team && !category) {
+      const clean = emptyChampions();
+
+      setChampions(clean);
+
+      saveData(
+        "champion",
+        clean
+      );
+
+      return;
+    }
+
+    const key =
+      getCategoryFromTeam(
+        team,
+        category
+      );
+
+    const next: Champions = {
+      ...champions,
+      [key]: team,
+    };
+
+    setChampions(next);
 
     saveData(
       "champion",
-      team
+      next
     );
   }
-
-  useEffect(() => {
-    function handleStorage(event: StorageEvent) {
-      if (event.key !== STORAGE_KEY) return;
-
-      const updated = loadData<Team | null>(
-        "champion",
-        null
-      );
-
-      setChampionState(updated);
-    }
-
-    window.addEventListener(
-      "storage",
-      handleStorage
-    );
-
-    return () => {
-      window.removeEventListener(
-        "storage",
-        handleStorage
-      );
-    };
-  }, []);
 
   return (
     <ChampionContext.Provider
       value={{
         champion,
+        champions,
         setChampion,
       }}
     >

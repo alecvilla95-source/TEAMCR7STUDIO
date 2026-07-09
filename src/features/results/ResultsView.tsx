@@ -1,355 +1,346 @@
-import { useState, type CSSProperties } from "react";
+import {
+  type CSSProperties,
+} from "react";
+
+import type { Match } from "../../types/match";
+import type { TeamCategory } from "../../types/team";
 
 import { useFixture } from "../../store/fixtureStore";
+import { useTournament } from "../../store/tournamentStore";
+import { useTeams } from "../../store/teamStore";
 import { useChampion } from "../../store/championStore";
 import { useOverlay } from "../../store/overlayStore";
-import { useTimer } from "../../store/timerStore";
-import { useTournament } from "../../store/tournamentStore";
+import { useApp } from "../../store/appStore";
 
 import { applyResult } from "../../engine/resultEngine";
 
-function formatTime(seconds: number) {
-  const minutes = Math.floor(seconds / 60)
-    .toString()
-    .padStart(2, "0");
+type VenueCategory =
+  | TeamCategory
+  | "GENERAL";
 
-  const secs = (seconds % 60)
-    .toString()
-    .padStart(2, "0");
+interface RoundGroup {
+  key: string;
+  round: number;
+  name: string;
+  matches: Match[];
+}
 
-  return `${minutes}:${secs}`;
+interface VenueGroup {
+  key: string;
+  label: string;
+  category: VenueCategory;
+  court: number;
+  matches: Match[];
+}
+
+function getCategoryLabel(
+  category: VenueCategory
+) {
+  if (category === "MEN") return "VARONES";
+
+  if (category === "WOMEN") return "MUJERES";
+
+  return "GENERAL";
+}
+
+function getCategoryColor(
+  category: VenueCategory
+) {
+  if (category === "WOMEN") return "#f9a8d4";
+
+  if (category === "MEN") return "#93c5fd";
+
+  return "#facc15";
+}
+
+function getRoundTitle(
+  matches: Match[],
+  round: number
+) {
+  const first = matches[0];
+
+  if (first?.groupName) {
+    return first.groupName;
+  }
+
+  const hasFinal = matches.some((match) =>
+    (match.courtLabel ?? "")
+      .toUpperCase()
+      .includes("FINAL")
+  );
+
+  if (hasFinal) {
+    return "FINALES";
+  }
+
+  return `RONDA ${round}`;
+}
+
+function groupByRound(
+  matches: Match[]
+): RoundGroup[] {
+  const map = new Map<string, Match[]>();
+
+  matches.forEach((match) => {
+    const key =
+      match.groupName ??
+      `ROUND_${match.round}`;
+
+    if (!map.has(key)) {
+      map.set(key, []);
+    }
+
+    map.get(key)!.push(match);
+  });
+
+  return Array.from(map.entries())
+    .map(([key, list]) => {
+      const sorted = [...list].sort((a, b) => {
+        if (a.round !== b.round) {
+          return a.round - b.round;
+        }
+
+        if (a.order !== b.order) {
+          return a.order - b.order;
+        }
+
+        return a.court - b.court;
+      });
+
+      const round =
+        sorted[0]?.round ?? 1;
+
+      return {
+        key,
+        round,
+        name: getRoundTitle(
+          sorted,
+          round
+        ),
+        matches: sorted,
+      };
+    })
+    .sort((a, b) => a.round - b.round);
+}
+
+function groupByVenue(
+  matches: Match[]
+): VenueGroup[] {
+  const map = new Map<string, VenueGroup>();
+
+  matches.forEach((match) => {
+    const label =
+      match.courtLabel ??
+      `Cancha ${match.court || 1}`;
+
+    const category: VenueCategory =
+      match.category ?? "GENERAL";
+
+    const key =
+      `${category}_${label}`;
+
+    if (!map.has(key)) {
+      map.set(key, {
+        key,
+        label,
+        category,
+        court: match.court || 1,
+        matches: [],
+      });
+    }
+
+    map.get(key)!.matches.push(match);
+  });
+
+  const order: Record<VenueCategory, number> = {
+    MEN: 1,
+    WOMEN: 2,
+    GENERAL: 3,
+  };
+
+  return Array.from(map.values())
+    .map((venue) => ({
+      ...venue,
+      matches: [...venue.matches].sort((a, b) => {
+        if (a.time !== b.time) {
+          return a.time.localeCompare(b.time);
+        }
+
+        return a.order - b.order;
+      }),
+    }))
+    .sort((a, b) => {
+      if (order[a.category] !== order[b.category]) {
+        return order[a.category] - order[b.category];
+      }
+
+      if (a.court !== b.court) {
+        return a.court - b.court;
+      }
+
+      return a.label.localeCompare(b.label);
+    });
+}
+
+function safeNumber(value: number) {
+  if (Number.isNaN(value)) return 0;
+
+  return Math.max(0, value);
 }
 
 export default function ResultsView() {
   const { fixture, setFixture } = useFixture();
 
-  const { champion, setChampion } = useChampion();
-
-  const { activeMatchId, setActiveMatchId } = useOverlay();
-
-  const {
-    timer,
-    secondsLeft,
-    startTimer,
-    pauseTimer,
-    resetTimer,
-  } = useTimer();
-
   const { tournament } = useTournament();
 
-  const [scores, setScores] = useState<
-    Record<number, { a: number; b: number }>
-  >({});
+  const { teams } = useTeams();
 
-  const [penalties, setPenalties] = useState<
-    Record<number, { a: number; b: number }>
-  >({});
+  const { champions, setChampion } =
+    useChampion();
 
-  const totalMatches = fixture.length;
+  const { setActiveMatchId } = useOverlay();
+
+  const { setPage } = useApp();
+
+  const rounds = groupByRound(fixture);
 
   const finishedMatches = fixture.filter(
     (match) => match.status === "FINISHED"
   ).length;
 
-  const pendingMatches =
-    totalMatches - finishedMatches;
+  function updateMatchNumber(
+    matchId: number,
+    field:
+      | "scoreA"
+      | "scoreB"
+      | "penaltyA"
+      | "penaltyB",
+    value: number
+  ) {
+    const nextFixture = fixture.map((match) => {
+      if (match.id !== matchId) {
+        return match;
+      }
 
-  function exportPDF() {
-    window.print();
+      return {
+        ...match,
+        [field]: safeNumber(value),
+        status:
+          match.status === "FINISHED"
+            ? "FINISHED"
+            : "PLAYING",
+      };
+    });
+
+    setFixture(nextFixture);
   }
 
-  function getScore(
+  function adjustScore(
     matchId: number,
-    team: "a" | "b"
+    field: "scoreA" | "scoreB",
+    amount: number
   ) {
     const match = fixture.find(
       (item) => item.id === matchId
     );
 
-    if (!match) return 0;
+    if (!match) return;
 
-    if (team === "a") {
-      return scores[matchId]?.a ?? match.scoreA;
-    }
-
-    return scores[matchId]?.b ?? match.scoreB;
-  }
-
-  function getPenalty(
-    matchId: number,
-    team: "a" | "b"
-  ) {
-    if (team === "a") {
-      return penalties[matchId]?.a ?? 0;
-    }
-
-    return penalties[matchId]?.b ?? 0;
-  }
-
-  function updateScore(
-    matchId: number,
-    team: "a" | "b",
-    value: number
-  ) {
-    const cleanValue = Math.max(
-      0,
-      Number.isNaN(value) ? 0 : value
-    );
-
-    setScores((currentScores) => {
-      const match = fixture.find(
-        (item) => item.id === matchId
-      );
-
-      const previous = currentScores[matchId] ?? {
-        a: match?.scoreA ?? 0,
-        b: match?.scoreB ?? 0,
-      };
-
-      return {
-        ...currentScores,
-        [matchId]: {
-          ...previous,
-          [team]: cleanValue,
-        },
-      };
-    });
-
-    if (activeMatchId === matchId) {
-      const updatedFixture = fixture.map((match) => {
-        if (match.id !== matchId) return match;
-
-        return {
-          ...match,
-          scoreA:
-            team === "a"
-              ? cleanValue
-              : match.scoreA,
-          scoreB:
-            team === "b"
-              ? cleanValue
-              : match.scoreB,
-        };
-      });
-
-      setFixture(updatedFixture);
-    }
-  }
-
-  function updatePenalty(
-    matchId: number,
-    team: "a" | "b",
-    value: number
-  ) {
-    const cleanValue = Math.max(
-      0,
-      Number.isNaN(value) ? 0 : value
-    );
-
-    setPenalties((currentPenalties) => {
-      const previous = currentPenalties[matchId] ?? {
-        a: 0,
-        b: 0,
-      };
-
-      return {
-        ...currentPenalties,
-        [matchId]: {
-          ...previous,
-          [team]: cleanValue,
-        },
-      };
-    });
-  }
-
-  function addGoal(
-    matchId: number,
-    team: "a" | "b"
-  ) {
-    const current = getScore(
+    updateMatchNumber(
       matchId,
-      team
-    );
-
-    updateScore(
-      matchId,
-      team,
-      current + 1
+      field,
+      safeNumber(match[field] + amount)
     );
   }
 
-  function removeGoal(
-    matchId: number,
-    team: "a" | "b"
-  ) {
-    const current = getScore(
-      matchId,
-      team
-    );
-
-    updateScore(
-      matchId,
-      team,
-      Math.max(0, current - 1)
-    );
-  }
-
-  function addPenalty(
-    matchId: number,
-    team: "a" | "b"
-  ) {
-    const current = getPenalty(
-      matchId,
-      team
-    );
-
-    updatePenalty(
-      matchId,
-      team,
-      current + 1
-    );
-  }
-
-  function removePenalty(
-    matchId: number,
-    team: "a" | "b"
-  ) {
-    const current = getPenalty(
-      matchId,
-      team
-    );
-
-    updatePenalty(
-      matchId,
-      team,
-      Math.max(0, current - 1)
-    );
-  }
-
-  function saveResult(matchId: number) {
+  function saveResult(match: Match) {
     const currentMatch = fixture.find(
-      (match) => match.id === matchId
+      (item) => item.id === match.id
     );
 
-    if (!currentMatch) {
-      alert("No se encontró el partido.");
-      return;
-    }
-
-    if (!currentMatch.teamA || !currentMatch.teamB) {
-      alert("Este partido aún no está listo.");
-      return;
-    }
+    if (!currentMatch) return;
 
     const isGroupMatch =
       currentMatch.stage === "GROUP";
 
-    const result = scores[matchId] ?? {
-      a: currentMatch.scoreA,
-      b: currentMatch.scoreB,
-    };
+    const isTie =
+      currentMatch.scoreA === currentMatch.scoreB;
 
-    const penaltyResult =
-      !isGroupMatch && result.a === result.b
-        ? penalties[matchId]
-        : undefined;
+    const penaltyA =
+      currentMatch.penaltyA;
 
-    if (!isGroupMatch && result.a === result.b) {
-      if (!penaltyResult) {
-        alert("El partido está empatado. Ingrese los penales.");
-        return;
-      }
+    const penaltyB =
+      currentMatch.penaltyB;
 
-      if (penaltyResult.a === penaltyResult.b) {
-        alert("Los penales no pueden quedar empatados.");
-        return;
-      }
+    if (
+      !isGroupMatch &&
+      isTie &&
+      (
+        penaltyA === undefined ||
+        penaltyB === undefined ||
+        penaltyA === penaltyB
+      )
+    ) {
+      alert(
+        "Debe ingresar penales válidos para definir el ganador."
+      );
+
+      return;
     }
 
     try {
-      const updatedMatches = applyResult(
+      const updatedFixture = applyResult(
         fixture,
-        matchId,
-        result.a,
-        result.b,
-        penaltyResult?.a,
-        penaltyResult?.b
+        currentMatch.id,
+        currentMatch.scoreA,
+        currentMatch.scoreB,
+        isGroupMatch ? undefined : penaltyA,
+        isGroupMatch ? undefined : penaltyB
       );
 
-      const finishedMatch = updatedMatches.find(
-        (match) => match.id === matchId
-      );
+      setFixture(updatedFixture);
+
+      const savedMatch =
+        updatedFixture.find(
+          (item) => item.id === currentMatch.id
+        );
 
       if (
-        finishedMatch &&
-        finishedMatch.winner &&
-        finishedMatch.stage !== "GROUP" &&
-        !finishedMatch.nextMatchId
+        savedMatch &&
+        savedMatch.stage !== "GROUP" &&
+        !savedMatch.nextMatchId &&
+        savedMatch.winner
       ) {
-        setChampion(finishedMatch.winner);
-        alert(`🏆 Campeón: ${finishedMatch.winner.name}`);
+        const category =
+          savedMatch.category ??
+          savedMatch.winner.category ??
+          "GENERAL";
+
+        setChampion(
+          savedMatch.winner,
+          category
+        );
       }
-
-      pauseTimer();
-
-      if (activeMatchId === matchId) {
-        setActiveMatchId(null);
-      }
-
-      setFixture(updatedMatches);
     } catch (error) {
-      if (error instanceof Error) {
-        alert(error.message);
-      } else {
-        alert("No se pudo guardar el resultado.");
-      }
+      alert(
+        error instanceof Error
+          ? error.message
+          : "No se pudo guardar el resultado."
+      );
     }
   }
 
-  function showInOBS(matchId: number) {
-    setActiveMatchId(matchId);
+  function clearObs() {
+    setActiveMatchId(null);
+  }
 
-    const duration =
-      (tournament?.duration ?? 20) * 60;
-
-    resetTimer(duration);
-
-    const updatedFixture = fixture.map((match) => {
-      if (match.status === "FINISHED") {
-        return match;
-      }
-
-      if (match.id === matchId) {
-        return {
-          ...match,
-          status: "PLAYING" as const,
-        };
-      }
-
-      if (match.status === "PLAYING") {
-        return {
-          ...match,
-          status: "PENDING" as const,
-        };
-      }
-
-      return match;
-    });
-
-    setFixture(updatedFixture);
+  function exportPDF() {
+    window.print();
   }
 
   return (
     <div>
-      <div
-        style={{
-          background: "#1e293b",
-          border: "1px solid #334155",
-          borderRadius: 14,
-          padding: 25,
-          marginBottom: 25,
-        }}
-      >
+      <div style={headerBox}>
         <div
           style={{
             display: "flex",
@@ -366,13 +357,13 @@ export default function ResultsView() {
                 marginBottom: 8,
               }}
             >
-              📊 Resultados
+              📊 Resultados del Campeonato
             </h2>
 
             <h1
               style={{
                 margin: 0,
-                fontSize: 32,
+                fontSize: 34,
               }}
             >
               {tournament?.name ?? "TEAMCR7STUDIO"}
@@ -385,30 +376,52 @@ export default function ResultsView() {
                 marginBottom: 0,
               }}
             >
-              Reporte de resultados del campeonato.
+              Partidos jugados:{" "}
+              <strong>
+                {finishedMatches} / {fixture.length}
+              </strong>
             </p>
           </div>
 
-          <button
-            onClick={exportPDF}
-            style={primaryButton}
+          <div
+            style={{
+              display: "flex",
+              gap: 12,
+              flexWrap: "wrap",
+            }}
           >
-            📄 Exportar PDF
-          </button>
+            <button
+              onClick={() => setPage("fixture")}
+              style={secondaryButton}
+            >
+              📅 Fixture
+            </button>
+
+            <button
+              onClick={clearObs}
+              style={dangerButton}
+            >
+              🧹 Limpiar OBS
+            </button>
+
+            <button
+              onClick={exportPDF}
+              style={primaryButton}
+            >
+              📄 Exportar PDF
+            </button>
+          </div>
         </div>
 
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns:
-              "repeat(auto-fit, minmax(150px, 1fr))",
-            gap: 15,
-            marginTop: 25,
-          }}
-        >
+        <div style={infoGrid}>
+          <InfoBox
+            label="Equipos"
+            value={teams.length}
+          />
+
           <InfoBox
             label="Partidos"
-            value={totalMatches}
+            value={fixture.length}
           />
 
           <InfoBox
@@ -417,508 +430,402 @@ export default function ResultsView() {
           />
 
           <InfoBox
-            label="Pendientes"
-            value={pendingMatches}
-          />
-
-          <InfoBox
-            label="Canchas"
+            label="Canchas Varones"
             value={tournament?.courts ?? 0}
           />
 
           <InfoBox
-            label="Duración"
-            value={`${tournament?.duration ?? 0} min`}
+            label="Canchas Mujeres"
+            value={tournament?.womenCourts ?? 0}
           />
         </div>
+
+        <div style={championsBox}>
+          <ChampionCard
+            title="🏆 Campeón Varones"
+            value={champions.MEN?.name ?? "Pendiente"}
+            color="#93c5fd"
+          />
+
+          {(tournament?.womenCourts ?? 0) > 0 && (
+            <ChampionCard
+              title="🏆 Campeona Mujeres"
+              value={champions.WOMEN?.name ?? "Pendiente"}
+              color="#f9a8d4"
+            />
+          )}
+
+          {champions.GENERAL && (
+            <ChampionCard
+              title="🏆 Campeón General"
+              value={champions.GENERAL.name}
+              color="#facc15"
+            />
+          )}
+        </div>
       </div>
 
-      <div
-        style={{
-          background: "#0f172a",
-          border: "1px solid #334155",
-          borderRadius: 12,
-          padding: 20,
-          marginBottom: 25,
-        }}
-      >
-        <h3
-          style={{
-            marginTop: 0,
-          }}
-        >
-          ⏱ Cronómetro OBS
-        </h3>
-
-        <div
-          style={{
-            fontSize: 42,
-            fontWeight: "bold",
-            color:
-              secondsLeft <= 10
-                ? "#ef4444"
-                : "#60a5fa",
-            marginBottom: 15,
-          }}
-        >
-          {formatTime(secondsLeft)}
-        </div>
-
-        <div
-          style={{
-            display: "flex",
-            gap: 12,
-            flexWrap: "wrap",
-          }}
-        >
-          <button
-            onClick={startTimer}
-            style={greenButton}
-          >
-            ▶ INICIAR
-          </button>
-
-          <button
-            onClick={pauseTimer}
-            style={secondaryButton}
-          >
-            ⏸ PAUSAR
-          </button>
-
-          <button
-            onClick={() => resetTimer()}
-            style={secondaryButton}
-          >
-            🔄 REINICIAR
-          </button>
-
-          <button
-            onClick={() => setActiveMatchId(null)}
-            style={secondaryButton}
-          >
-            🧹 LIMPIAR OBS
-          </button>
-
-          <button
-            onClick={() => {
-              const url = `${window.location.origin}?page=overlay`;
-              window.open(url, "_blank");
-            }}
-            style={purpleButton}
-          >
-            📺 ABRIR OVERLAY
-          </button>
-        </div>
-
-        <p
-          style={{
-            color: "#94a3b8",
-            marginBottom: 0,
-            marginTop: 15,
-          }}
-        >
-          Estado:{" "}
-          <strong>
-            {timer.isRunning
-              ? "En marcha"
-              : "Pausado"}
-          </strong>
-        </p>
-      </div>
-
-      {champion && (
-        <div
-          style={{
-            background: "#713f12",
-            color: "#fef3c7",
-            padding: 20,
-            borderRadius: 12,
-            marginBottom: 25,
-            fontSize: 22,
-            fontWeight: "bold",
-            textAlign: "center",
-          }}
-        >
-          🏆 CAMPEÓN: {champion.name}
+      {fixture.length === 0 && (
+        <div style={emptyBox}>
+          Todavía no hay partidos generados.
         </div>
       )}
 
-      {fixture.map((match) => {
-        const finished =
-          match.status === "FINISHED";
-
-        const playing =
-          match.status === "PLAYING";
-
-        const ready =
-          Boolean(match.teamA && match.teamB);
-
-        const active =
-          activeMatchId === match.id;
-
-        const isGroupMatch =
-          match.stage === "GROUP";
-
-        const scoreA = getScore(match.id, "a");
-        const scoreB = getScore(match.id, "b");
-
-        const showPenalties =
-          ready &&
-          !finished &&
-          !isGroupMatch &&
-          scoreA === scoreB;
+      {rounds.map((roundGroup) => {
+        const venues =
+          groupByVenue(roundGroup.matches);
 
         return (
-          <div
-            key={match.id}
+          <section
+            key={roundGroup.key}
             style={{
-              background: "#1e293b",
-              padding: 20,
-              borderRadius: 12,
-              marginBottom: 25,
-              border: active
-                ? "2px solid #facc15"
-                : finished
-                ? "2px solid #16a34a"
-                : playing
-                ? "2px solid #22c55e"
-                : "1px solid #334155",
+              marginBottom: 50,
               breakInside: "avoid",
             }}
           >
-            <h3>
-              Partido {match.id}
-
-              {isGroupMatch && (
-                <span
-                  style={{
-                    marginLeft: 10,
-                    color: "#60a5fa",
-                    fontSize: 14,
-                  }}
-                >
-                  👥 {match.groupName}
-                </span>
-              )}
-
-              {active && (
-                <span
-                  style={{
-                    marginLeft: 10,
-                    color: "#facc15",
-                    fontSize: 14,
-                  }}
-                >
-                  📺 En OBS
-                </span>
-              )}
-
-              {playing && (
-                <span
-                  style={{
-                    marginLeft: 10,
-                    color: "#22c55e",
-                    fontSize: 14,
-                  }}
-                >
-                  🟢 En juego
-                </span>
-              )}
-            </h3>
-
-            <p>
-              {match.teamA?.name ?? "Por definir"}
-              {"  VS  "}
-              {match.teamB?.name ?? "Por definir"}
-            </p>
+            <h2
+              style={{
+                color: "#60a5fa",
+                fontSize: 26,
+                borderBottom: "3px solid #334155",
+                paddingBottom: 12,
+                marginBottom: 25,
+              }}
+            >
+              {roundGroup.name}
+            </h2>
 
             <div
               style={{
-                display: "grid",
-                gridTemplateColumns: "1fr auto",
-                gap: 15,
-                marginTop: 20,
-                alignItems: "center",
+                overflowX: "auto",
+                paddingBottom: 12,
               }}
             >
-              <strong>
-                {match.teamA?.name ?? "Equipo A"}
-              </strong>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: `repeat(${venues.length}, minmax(340px, 1fr))`,
+                  minWidth:
+                    venues.length > 3
+                      ? venues.length * 360
+                      : undefined,
+                  gap: 22,
+                  alignItems: "start",
+                }}
+              >
+                {venues.map((venue) => (
+                  <div
+                    key={venue.key}
+                    style={{
+                      background: "#0f172a",
+                      border: `1px solid ${getCategoryColor(
+                        venue.category
+                      )}`,
+                      borderRadius: 14,
+                      padding: 16,
+                    }}
+                  >
+                    <div
+                      style={{
+                        textAlign: "center",
+                        color: getCategoryColor(
+                          venue.category
+                        ),
+                        fontWeight: "bold",
+                        fontSize: 13,
+                        marginBottom: 8,
+                      }}
+                    >
+                      {getCategoryLabel(
+                        venue.category
+                      )}
+                    </div>
 
-              <div style={scoreControls}>
-                <button
-                  disabled={finished || !ready}
-                  onClick={() => removeGoal(match.id, "a")}
-                  style={scoreButton}
-                >
-                  -
-                </button>
+                    <h3
+                      style={{
+                        marginTop: 0,
+                        marginBottom: 16,
+                        color: "#f8fafc",
+                        textAlign: "center",
+                        fontSize: 22,
+                        borderBottom:
+                          "1px solid #334155",
+                        paddingBottom: 12,
+                      }}
+                    >
+                      🏟 {venue.label}
+                    </h3>
 
-                <input
-                  type="number"
-                  min={0}
-                  disabled={finished || !ready}
-                  value={scoreA}
-                  onChange={(e) =>
-                    updateScore(
-                      match.id,
-                      "a",
-                      Number(e.target.value)
-                    )
-                  }
-                  style={scoreInput}
-                />
-
-                <button
-                  disabled={finished || !ready}
-                  onClick={() => addGoal(match.id, "a")}
-                  style={scoreButton}
-                >
-                  +
-                </button>
-              </div>
-
-              <strong>
-                {match.teamB?.name ?? "Equipo B"}
-              </strong>
-
-              <div style={scoreControls}>
-                <button
-                  disabled={finished || !ready}
-                  onClick={() => removeGoal(match.id, "b")}
-                  style={scoreButton}
-                >
-                  -
-                </button>
-
-                <input
-                  type="number"
-                  min={0}
-                  disabled={finished || !ready}
-                  value={scoreB}
-                  onChange={(e) =>
-                    updateScore(
-                      match.id,
-                      "b",
-                      Number(e.target.value)
-                    )
-                  }
-                  style={scoreInput}
-                />
-
-                <button
-                  disabled={finished || !ready}
-                  onClick={() => addGoal(match.id, "b")}
-                  style={scoreButton}
-                >
-                  +
-                </button>
+                    {venue.matches.map(
+                      (match, index) => (
+                        <ResultCard
+                          key={match.id}
+                          match={match}
+                          displayLabel={`Partido ${
+                            index + 1
+                          }`}
+                          onScoreChange={
+                            updateMatchNumber
+                          }
+                          onAdjustScore={adjustScore}
+                          onSave={saveResult}
+                          onObs={() =>
+                            setActiveMatchId(match.id)
+                          }
+                        />
+                      )
+                    )}
+                  </div>
+                ))}
               </div>
             </div>
-
-            {showPenalties && (
-              <div
-                style={{
-                  marginTop: 20,
-                  background: "#0f172a",
-                  border: "1px solid #facc15",
-                  borderRadius: 12,
-                  padding: 15,
-                }}
-              >
-                <strong
-                  style={{
-                    color: "#facc15",
-                  }}
-                >
-                  ⚽ Definir por penales
-                </strong>
-
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "1fr auto",
-                    gap: 15,
-                    marginTop: 15,
-                    alignItems: "center",
-                  }}
-                >
-                  <span>
-                    {match.teamA?.name}
-                  </span>
-
-                  <div style={scoreControls}>
-                    <button
-                      onClick={() => removePenalty(match.id, "a")}
-                      style={scoreButton}
-                    >
-                      -
-                    </button>
-
-                    <input
-                      type="number"
-                      min={0}
-                      value={getPenalty(match.id, "a")}
-                      onChange={(e) =>
-                        updatePenalty(
-                          match.id,
-                          "a",
-                          Number(e.target.value)
-                        )
-                      }
-                      style={scoreInput}
-                    />
-
-                    <button
-                      onClick={() => addPenalty(match.id, "a")}
-                      style={scoreButton}
-                    >
-                      +
-                    </button>
-                  </div>
-
-                  <span>
-                    {match.teamB?.name}
-                  </span>
-
-                  <div style={scoreControls}>
-                    <button
-                      onClick={() => removePenalty(match.id, "b")}
-                      style={scoreButton}
-                    >
-                      -
-                    </button>
-
-                    <input
-                      type="number"
-                      min={0}
-                      value={getPenalty(match.id, "b")}
-                      onChange={(e) =>
-                        updatePenalty(
-                          match.id,
-                          "b",
-                          Number(e.target.value)
-                        )
-                      }
-                      style={scoreInput}
-                    />
-
-                    <button
-                      onClick={() => addPenalty(match.id, "b")}
-                      style={scoreButton}
-                    >
-                      +
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {finished && (
-              <div
-                style={{
-                  marginTop: 15,
-                  color: "#bbf7d0",
-                  fontWeight: "bold",
-                }}
-              >
-                Resultado final: {match.scoreA} - {match.scoreB}
-                {match.penaltyA !== undefined &&
-                  match.penaltyB !== undefined && (
-                    <>
-                      {" "}
-                      | Penales: {match.penaltyA} - {match.penaltyB}
-                    </>
-                  )}
-              </div>
-            )}
-
-            {active && !finished && (
-              <div
-                style={{
-                  marginTop: 15,
-                  color: "#facc15",
-                  fontWeight: "bold",
-                }}
-              >
-                Marcador en vivo para OBS
-              </div>
-            )}
-
-            <div
-              style={{
-                display: "flex",
-                gap: 12,
-                marginTop: 20,
-                flexWrap: "wrap",
-              }}
-            >
-              {!finished ? (
-                <button
-                  disabled={!ready}
-                  onClick={() => saveResult(match.id)}
-                  style={{
-                    padding: "10px 20px",
-                    background: !ready
-                      ? "#475569"
-                      : "#2563eb",
-                    color: "white",
-                    border: "none",
-                    borderRadius: 8,
-                    cursor: !ready
-                      ? "not-allowed"
-                      : "pointer",
-                  }}
-                >
-                  GUARDAR RESULTADO
-                </button>
-              ) : (
-                <div
-                  style={{
-                    padding: 12,
-                    background:
-                      match.winner
-                        ? "#14532d"
-                        : "#334155",
-                    color:
-                      match.winner
-                        ? "#bbf7d0"
-                        : "#e2e8f0",
-                    borderRadius: 8,
-                    fontWeight: "bold",
-                  }}
-                >
-                  {match.winner
-                    ? `🏆 Ganador: ${match.winner.name}`
-                    : "🤝 Empate"}
-                </div>
-              )}
-
-              <button
-                disabled={!ready}
-                onClick={() => showInOBS(match.id)}
-                style={{
-                  padding: "10px 20px",
-                  background: active
-                    ? "#facc15"
-                    : ready
-                    ? "#7c3aed"
-                    : "#475569",
-                  color: active ? "#111827" : "white",
-                  border: "none",
-                  borderRadius: 8,
-                  cursor: ready
-                    ? "pointer"
-                    : "not-allowed",
-                  fontWeight: "bold",
-                }}
-              >
-                📺 MOSTRAR EN OBS
-              </button>
-            </div>
-          </div>
+          </section>
         );
       })}
+    </div>
+  );
+}
+
+function ResultCard({
+  match,
+  displayLabel,
+  onScoreChange,
+  onAdjustScore,
+  onSave,
+  onObs,
+}: {
+  match: Match;
+  displayLabel: string;
+  onScoreChange: (
+    matchId: number,
+    field:
+      | "scoreA"
+      | "scoreB"
+      | "penaltyA"
+      | "penaltyB",
+    value: number
+  ) => void;
+  onAdjustScore: (
+    matchId: number,
+    field: "scoreA" | "scoreB",
+    amount: number
+  ) => void;
+  onSave: (match: Match) => void;
+  onObs: () => void;
+}) {
+  const isFinished =
+    match.status === "FINISHED";
+
+  const isGroupMatch =
+    match.stage === "GROUP";
+
+  const needsPenalties =
+    !isGroupMatch &&
+    match.scoreA === match.scoreB;
+
+  const courtLabel =
+    match.courtLabel ??
+    `Cancha ${match.court || 1}`;
+
+  return (
+    <div style={resultCard}>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          gap: 12,
+          flexWrap: "wrap",
+          color: "#94a3b8",
+          fontSize: 14,
+          marginBottom: 14,
+        }}
+      >
+        <strong>{displayLabel}</strong>
+
+        <span>
+          🕒 {match.time || "--:--"} | 🏟 {courtLabel}
+        </span>
+      </div>
+
+      <TeamScoreRow
+        name={
+          match.teamA?.name ??
+          (
+            match.sourceMatchA
+              ? `Ganador Partido ${match.sourceMatchA}`
+              : "Por definir"
+          )
+        }
+        value={match.scoreA}
+        onChange={(value) =>
+          onScoreChange(
+            match.id,
+            "scoreA",
+            value
+          )
+        }
+        onMinus={() =>
+          onAdjustScore(
+            match.id,
+            "scoreA",
+            -1
+          )
+        }
+        onPlus={() =>
+          onAdjustScore(
+            match.id,
+            "scoreA",
+            1
+          )
+        }
+      />
+
+      <div style={vsText}>VS</div>
+
+      <TeamScoreRow
+        name={
+          match.teamB?.name ??
+          (
+            match.sourceMatchB
+              ? `Ganador Partido ${match.sourceMatchB}`
+              : "Por definir"
+          )
+        }
+        value={match.scoreB}
+        onChange={(value) =>
+          onScoreChange(
+            match.id,
+            "scoreB",
+            value
+          )
+        }
+        onMinus={() =>
+          onAdjustScore(
+            match.id,
+            "scoreB",
+            -1
+          )
+        }
+        onPlus={() =>
+          onAdjustScore(
+            match.id,
+            "scoreB",
+            1
+          )
+        }
+      />
+
+      {needsPenalties && (
+        <div style={penaltyBox}>
+          <strong>Penales</strong>
+
+          <div style={penaltyGrid}>
+            <input
+              type="number"
+              min={0}
+              value={match.penaltyA ?? 0}
+              onChange={(event) =>
+                onScoreChange(
+                  match.id,
+                  "penaltyA",
+                  Number(event.target.value)
+                )
+              }
+              style={scoreInput}
+            />
+
+            <span>-</span>
+
+            <input
+              type="number"
+              min={0}
+              value={match.penaltyB ?? 0}
+              onChange={(event) =>
+                onScoreChange(
+                  match.id,
+                  "penaltyB",
+                  Number(event.target.value)
+                )
+              }
+              style={scoreInput}
+            />
+          </div>
+        </div>
+      )}
+
+      {isFinished && (
+        <div style={winnerBox}>
+          {match.winner
+            ? `🏆 Ganador: ${match.winner.name}`
+            : "🤝 Empate"}
+        </div>
+      )}
+
+      <div style={actionsRow}>
+        <button
+          onClick={onObs}
+          style={obsButton}
+        >
+          📺 MOSTRAR EN OBS
+        </button>
+
+        <button
+          onClick={() => onSave(match)}
+          style={saveButton}
+        >
+          💾 GUARDAR
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function TeamScoreRow({
+  name,
+  value,
+  onChange,
+  onMinus,
+  onPlus,
+}: {
+  name: string;
+  value: number;
+  onChange: (value: number) => void;
+  onMinus: () => void;
+  onPlus: () => void;
+}) {
+  return (
+    <div style={teamRow}>
+      <div style={teamName}>
+        {name}
+      </div>
+
+      <div style={scoreControls}>
+        <button
+          onClick={onMinus}
+          style={smallButton}
+        >
+          -
+        </button>
+
+        <input
+          type="number"
+          min={0}
+          value={value}
+          onChange={(event) =>
+            onChange(
+              Number(event.target.value)
+            )
+          }
+          style={scoreInput}
+        />
+
+        <button
+          onClick={onPlus}
+          style={smallButton}
+        >
+          +
+        </button>
+      </div>
     </div>
   );
 }
@@ -931,14 +838,7 @@ function InfoBox({
   value: string | number;
 }) {
   return (
-    <div
-      style={{
-        background: "#0f172a",
-        border: "1px solid #334155",
-        borderRadius: 10,
-        padding: 14,
-      }}
-    >
+    <div style={infoBox}>
       <div
         style={{
           color: "#94a3b8",
@@ -961,47 +861,198 @@ function InfoBox({
   );
 }
 
+function ChampionCard({
+  title,
+  value,
+  color,
+}: {
+  title: string;
+  value: string;
+  color: string;
+}) {
+  return (
+    <div
+      style={{
+        background: "#0f172a",
+        border: `1px solid ${color}`,
+        borderRadius: 12,
+        padding: 16,
+      }}
+    >
+      <div
+        style={{
+          color,
+          fontWeight: "bold",
+          marginBottom: 8,
+        }}
+      >
+        {title}
+      </div>
+
+      <div
+        style={{
+          fontSize: 22,
+          fontWeight: "bold",
+        }}
+      >
+        {value}
+      </div>
+    </div>
+  );
+}
+
+const headerBox: CSSProperties = {
+  background: "#1e293b",
+  border: "1px solid #334155",
+  borderRadius: 14,
+  padding: 25,
+  marginBottom: 30,
+};
+
+const infoGrid: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns:
+    "repeat(auto-fit, minmax(150px, 1fr))",
+  gap: 15,
+  marginTop: 25,
+};
+
+const infoBox: CSSProperties = {
+  background: "#0f172a",
+  border: "1px solid #334155",
+  borderRadius: 10,
+  padding: 14,
+};
+
+const championsBox: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns:
+    "repeat(auto-fit, minmax(220px, 1fr))",
+  gap: 15,
+  marginTop: 20,
+};
+
+const emptyBox: CSSProperties = {
+  background: "#1e293b",
+  border: "1px solid #334155",
+  borderRadius: 14,
+  padding: 25,
+  color: "#94a3b8",
+};
+
+const resultCard: CSSProperties = {
+  background: "#1e293b",
+  border: "1px solid #334155",
+  borderRadius: 14,
+  padding: 16,
+  marginBottom: 18,
+};
+
+const teamRow: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "1fr 130px",
+  gap: 12,
+  alignItems: "center",
+  marginTop: 10,
+};
+
+const teamName: CSSProperties = {
+  fontSize: 17,
+  fontWeight: "bold",
+};
+
 const scoreControls: CSSProperties = {
-  display: "flex",
-  gap: 8,
+  display: "grid",
+  gridTemplateColumns: "32px 60px 32px",
+  gap: 6,
   alignItems: "center",
 };
 
 const scoreInput: CSSProperties = {
-  width: 70,
-  padding: 10,
-  fontSize: 20,
-  fontWeight: "bold",
+  width: "100%",
+  padding: "8px 4px",
   textAlign: "center",
   borderRadius: 8,
   border: "1px solid #334155",
+  background: "#0f172a",
+  color: "white",
+  fontWeight: "bold",
 };
 
-const scoreButton: CSSProperties = {
-  width: 38,
-  height: 38,
-  borderRadius: 8,
+const smallButton: CSSProperties = {
+  padding: "8px 0",
   border: "none",
+  borderRadius: 8,
   background: "#334155",
   color: "white",
   cursor: "pointer",
-  fontSize: 20,
+  fontWeight: "bold",
+};
+
+const vsText: CSSProperties = {
+  textAlign: "center",
+  color: "#60a5fa",
+  fontWeight: "bold",
+  marginTop: 10,
+};
+
+const penaltyBox: CSSProperties = {
+  marginTop: 15,
+  background: "#713f12",
+  color: "#fef3c7",
+  padding: 12,
+  borderRadius: 10,
+  textAlign: "center",
+};
+
+const penaltyGrid: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "1fr 20px 1fr",
+  gap: 8,
+  alignItems: "center",
+  marginTop: 10,
+};
+
+const winnerBox: CSSProperties = {
+  marginTop: 15,
+  background: "#064e3b",
+  color: "#bbf7d0",
+  padding: 10,
+  borderRadius: 10,
+  textAlign: "center",
+  fontWeight: "bold",
+};
+
+const actionsRow: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "1fr 1fr",
+  gap: 10,
+  marginTop: 15,
+};
+
+const saveButton: CSSProperties = {
+  padding: "12px",
+  background: "#16a34a",
+  color: "white",
+  border: "none",
+  borderRadius: 8,
+  cursor: "pointer",
+  fontWeight: "bold",
+};
+
+const obsButton: CSSProperties = {
+  padding: "12px",
+  background: "#7c3aed",
+  color: "white",
+  border: "none",
+  borderRadius: 8,
+  cursor: "pointer",
   fontWeight: "bold",
 };
 
 const primaryButton: CSSProperties = {
   padding: "12px 18px",
   background: "#2563eb",
-  color: "white",
-  border: "none",
-  borderRadius: 8,
-  cursor: "pointer",
-  fontWeight: "bold",
-};
-
-const greenButton: CSSProperties = {
-  padding: "12px 18px",
-  background: "#16a34a",
   color: "white",
   border: "none",
   borderRadius: 8,
@@ -1019,9 +1070,9 @@ const secondaryButton: CSSProperties = {
   fontWeight: "bold",
 };
 
-const purpleButton: CSSProperties = {
+const dangerButton: CSSProperties = {
   padding: "12px 18px",
-  background: "#7c3aed",
+  background: "#dc2626",
   color: "white",
   border: "none",
   borderRadius: 8,
