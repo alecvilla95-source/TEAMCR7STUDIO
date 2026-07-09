@@ -4,13 +4,18 @@ import {
 } from "react";
 
 import type { Match } from "../../types/match";
-import type { Team } from "../../types/team";
+import type {
+  Team,
+  TeamCategory,
+} from "../../types/team";
+import type { GoalScorerRecord } from "../../types/goal";
 
 import { useApp } from "../../store/appStore";
 import { useTournament } from "../../store/tournamentStore";
 import { useTeams } from "../../store/teamStore";
 import { useFixture } from "../../store/fixtureStore";
 import { useChampion } from "../../store/championStore";
+import { useGoals } from "../../store/goalStore";
 
 function getCourtLabel(match: Match) {
   return (
@@ -68,6 +73,56 @@ function getTeamName(
   return "Por definir";
 }
 
+interface DashboardTopScorer {
+  key: string;
+
+  playerName: string;
+
+  teamName: string;
+
+  category: TeamCategory;
+
+  goals: number;
+}
+
+function calculateDashboardTopScorers(
+  records: GoalScorerRecord[]
+): DashboardTopScorer[] {
+  const map =
+    new Map<string, DashboardTopScorer>();
+
+  records.forEach((record) => {
+    const key =
+      `${record.category}_${record.teamId}_${record.playerId}`;
+
+    if (!map.has(key)) {
+      map.set(key, {
+        key,
+        playerName: record.playerName,
+        teamName: record.teamName,
+        category: record.category,
+        goals: 0,
+      });
+    }
+
+    const row = map.get(key)!;
+
+    row.goals += record.goals;
+  });
+
+  return Array.from(map.values()).sort(
+    (a, b) => {
+      if (b.goals !== a.goals) {
+        return b.goals - a.goals;
+      }
+
+      return a.playerName.localeCompare(
+        b.playerName
+      );
+    }
+  );
+}
+
 export default function Dashboard() {
   const { setPage } = useApp();
 
@@ -78,6 +133,8 @@ export default function Dashboard() {
   const { fixture } = useFixture();
 
   const { champions } = useChampion();
+
+  const { goalRecords } = useGoals();
 
   const [showParticipants, setShowParticipants] =
     useState(false);
@@ -118,6 +175,17 @@ export default function Dashboard() {
 
   const womenCourts =
     tournament?.womenCourts ?? 0;
+
+  const topScorers =
+    calculateDashboardTopScorers(goalRecords);
+
+  const topMenScorers = topScorers
+    .filter((row) => row.category !== "WOMEN")
+    .slice(0, 5);
+
+  const topWomenScorers = topScorers
+    .filter((row) => row.category === "WOMEN")
+    .slice(0, 5);
 
   function countMenByCourt(court: number) {
     return menTeams.filter(
@@ -387,6 +455,30 @@ export default function Dashboard() {
               marginTop: 0,
             }}
           >
+            ⚽ Top Goleadores
+          </h2>
+
+          <TopScorersMini
+            title="🏆 Varones"
+            rows={topMenScorers}
+            color="#93c5fd"
+          />
+
+          {womenCourts > 0 && (
+            <TopScorersMini
+              title="🏆 Mujeres"
+              rows={topWomenScorers}
+              color="#f9a8d4"
+            />
+          )}
+        </div>
+
+        <div style={panelBox}>
+          <h2
+            style={{
+              marginTop: 0,
+            }}
+          >
             🔴 Partido actual / siguiente
           </h2>
 
@@ -417,6 +509,13 @@ export default function Dashboard() {
           description="Agrega equipos o importa desde Excel."
           icon="👥"
           onClick={() => setPage("teams")}
+        />
+
+        <QuickButton
+          title="Jugadores"
+          description="Fichas Excel, documentos y dorsales."
+          icon="📝"
+          onClick={() => setPage("players")}
         />
 
         <QuickButton
@@ -577,6 +676,77 @@ function CourtCountRow({
       >
         {value} equipos
       </span>
+    </div>
+  );
+}
+
+function TopScorersMini({
+  title,
+  rows,
+  color,
+}: {
+  title: string;
+  rows: DashboardTopScorer[];
+  color: string;
+}) {
+  return (
+    <div
+      style={{
+        marginBottom: 18,
+      }}
+    >
+      <h3
+        style={{
+          color,
+          marginTop: 0,
+        }}
+      >
+        {title}
+      </h3>
+
+      {rows.length === 0 ? (
+        <p style={mutedText}>
+          Sin goles registrados.
+        </p>
+      ) : (
+        rows.map((row, index) => (
+          <div
+            key={row.key}
+            style={miniScorerRow}
+          >
+            <strong
+              style={{
+                color,
+                textAlign: "center",
+              }}
+            >
+              {index + 1}
+            </strong>
+
+            <div>
+              <strong>{row.playerName}</strong>
+
+              <div
+                style={{
+                  color: "#94a3b8",
+                  fontSize: 13,
+                }}
+              >
+                {row.teamName}
+              </div>
+            </div>
+
+            <strong
+              style={{
+                color,
+                textAlign: "right",
+              }}
+            >
+              {row.goals} ⚽
+            </strong>
+          </div>
+        ))
+      )}
     </div>
   );
 }
@@ -1036,6 +1206,18 @@ const totalMiniBox: CSSProperties = {
 
 const mutedText: CSSProperties = {
   color: "#94a3b8",
+};
+
+const miniScorerRow: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "35px 1fr 60px",
+  gap: 10,
+  alignItems: "center",
+  background: "#0f172a",
+  border: "1px solid #334155",
+  borderRadius: 10,
+  padding: 10,
+  marginBottom: 8,
 };
 
 const quickGrid: CSSProperties = {
