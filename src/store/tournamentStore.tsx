@@ -23,6 +23,7 @@ interface CreateTournamentData {
   courtMode: TournamentCourtMode;
   teams: number;
   courts: number;
+  womenCourts: number;
   startTime: string;
   duration: number;
   breaks: TournamentBreaks;
@@ -69,6 +70,8 @@ export function TournamentProvider({
       teams: data.teams,
 
       courts: data.courts,
+
+      womenCourts: data.womenCourts,
 
       startTime: data.startTime,
 

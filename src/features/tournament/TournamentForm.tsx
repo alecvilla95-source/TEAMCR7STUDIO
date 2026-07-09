@@ -54,7 +54,10 @@ export default function TournamentForm() {
 
   const [teams, setTeamsCount] = useState(16);
 
-  const [courts, setCourts] = useState(1);
+  const [courts, setCourts] = useState(2);
+
+  const [womenCourts, setWomenCourts] =
+    useState(0);
 
   const [startTime, setStartTime] =
     useState("09:00");
@@ -77,6 +80,9 @@ export default function TournamentForm() {
   const [finalBreak, setFinalBreak] =
     useState(30);
 
+  const totalCourts =
+    courts + womenCourts;
+
   function create() {
     if (!name.trim()) {
       alert("Ingrese el nombre del campeonato.");
@@ -96,11 +102,12 @@ export default function TournamentForm() {
       mode,
       courtMode:
         mode === "ELIMINATION" &&
-        courts > 1
+        totalCourts > 1
           ? courtMode
           : "SHARED",
       teams,
       courts,
+      womenCourts,
       startTime,
       duration,
       breaks,
@@ -130,8 +137,8 @@ export default function TournamentForm() {
           marginBottom: 30,
         }}
       >
-        Define modalidad, canchas, duración y descansos. Para relámpagos
-        puedes usar llaves separadas por cancha.
+        Define modalidad, canchas de varones, canchas de mujeres,
+        duración y descansos.
       </p>
 
       <div
@@ -186,29 +193,70 @@ export default function TournamentForm() {
           <option value={64}>64 Plazas</option>
         </select>
 
-        <label>Cantidad de Canchas</label>
+        <div style={sectionBox}>
+          <h3
+            style={{
+              marginTop: 0,
+            }}
+          >
+            🏟 Canchas del campeonato
+          </h3>
 
-        <select
-          value={courts}
-          onChange={(e) =>
-            setCourts(Number(e.target.value))
-          }
-          style={inputStyle}
-        >
-          <option value={1}>1 Cancha</option>
-          <option value={2}>2 Canchas</option>
-          <option value={3}>3 Canchas</option>
-          <option value={4}>4 Canchas</option>
-        </select>
+          <p
+            style={{
+              color: "#94a3b8",
+            }}
+          >
+            Puedes organizar varones y mujeres dentro del mismo campeonato,
+            pero con llaves separadas.
+          </p>
 
-        {mode === "ELIMINATION" && courts > 1 && (
+          <label>Canchas Varones</label>
+
+          <select
+            value={courts}
+            onChange={(e) =>
+              setCourts(Number(e.target.value))
+            }
+            style={inputStyle}
+          >
+            <option value={1}>1 Cancha Varones</option>
+            <option value={2}>2 Canchas Varones</option>
+            <option value={3}>3 Canchas Varones</option>
+            <option value={4}>4 Canchas Varones</option>
+          </select>
+
+          <label
+            style={{
+              marginTop: 12,
+            }}
+          >
+            Canchas Mujeres
+          </label>
+
+          <select
+            value={womenCourts}
+            onChange={(e) =>
+              setWomenCourts(Number(e.target.value))
+            }
+            style={inputStyle}
+          >
+            <option value={0}>Sin Canchas Mujeres</option>
+            <option value={1}>C. Mujer 1</option>
+            <option value={2}>C. Mujer 1 y 2</option>
+            <option value={3}>C. Mujer 1, 2 y 3</option>
+            <option value={4}>C. Mujer 1, 2, 3 y 4</option>
+          </select>
+        </div>
+
+        {mode === "ELIMINATION" && totalCourts > 1 && (
           <div style={sectionBox}>
             <h3
               style={{
                 marginTop: 0,
               }}
             >
-              🏟 Sistema de canchas
+              ⚽ Sistema relámpago
             </h3>
 
             <p
@@ -217,8 +265,8 @@ export default function TournamentForm() {
               }}
             >
               En relámpagos puedes separar los equipos por cancha.
-              Cada cancha tendrá su propia llave y al final los ganadores
-              se enfrentarán en la final general.
+              Cada cancha tendrá su propia llave. Los varones sacarán su
+              campeón y las mujeres su campeona.
             </p>
 
             <select
@@ -380,6 +428,9 @@ const sectionBox: CSSProperties = {
   borderRadius: 12,
   padding: 20,
   marginTop: 10,
+  display: "flex",
+  flexDirection: "column",
+  gap: 10,
 };
 
 const buttonStyle: CSSProperties = {

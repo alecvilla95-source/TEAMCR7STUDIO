@@ -29,6 +29,8 @@ export interface Tournament {
 
   courts: number;
 
+  womenCourts: number;
+
   startTime: string;
 
   duration: number;

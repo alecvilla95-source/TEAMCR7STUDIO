@@ -1,31 +1,46 @@
-import { useEffect, useRef, useState } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+} from "react";
 
 import { useTournament } from "../../store/tournamentStore";
 import { useTeams } from "../../store/teamStore";
 import { useFixture } from "../../store/fixtureStore";
 import { useApp } from "../../store/appStore";
 
-import type { Team } from "../../types/team";
+import type {
+  Team,
+  TeamCategory,
+} from "../../types/team";
 
 import { buildTournament } from "../../engine/tournamentEngine";
 import { importTeamsFromExcel } from "../../services/excelService";
 
-function getCourtSlots(
-  totalTeams: number,
+function splitSlots(
+  totalSlots: number,
   courts: number
 ): number[] {
-  const safeCourts = Math.max(1, courts);
+  if (courts <= 0) return [];
 
-  const base = Math.floor(totalTeams / safeCourts);
-
-  const remainder = totalTeams % safeCourts;
+  const base = Math.floor(totalSlots / courts);
+  const remainder = totalSlots % courts;
 
   return Array.from(
     {
-      length: safeCourts,
+      length: courts,
     },
     (_, index) =>
       base + (index < remainder ? 1 : 0)
+  );
+}
+
+function createEmptyGroups(
+  slots: number[]
+): string[][] {
+  return slots.map((count) =>
+    Array(count).fill("")
   );
 }
 
@@ -40,26 +55,42 @@ export default function TeamRegistration() {
 
   const totalTeams = tournament?.teams ?? 16;
 
-  const totalCourts = tournament?.courts ?? 1;
+  const menCourts = tournament?.courts ?? 1;
+
+  const womenCourts =
+    tournament?.womenCourts ?? 0;
 
   const isSeparateCourtMode =
     tournament?.mode === "ELIMINATION" &&
     tournament?.courtMode === "SEPARATE_BRACKETS" &&
-    totalCourts > 1;
+    menCourts + womenCourts > 1;
 
-  const courtSlots = getCourtSlots(
+  const menSlots = splitSlots(
     totalTeams,
-    totalCourts
+    menCourts
   );
 
-  const [teamNames, setTeamNames] = useState<string[]>([]);
+  const womenSlots = splitSlots(
+    womenCourts > 0 ? totalTeams : 0,
+    womenCourts
+  );
 
-  const [courtTeamNames, setCourtTeamNames] =
+  const [teamNames, setTeamNames] =
+    useState<string[]>([]);
+
+  const [menTeamsByCourt, setMenTeamsByCourt] =
     useState<string[][]>([]);
 
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [womenTeamsByCourt, setWomenTeamsByCourt] =
+    useState<string[][]>([]);
 
-  const courtFileRefs =
+  const fileInputRef =
+    useRef<HTMLInputElement>(null);
+
+  const menFileRefs =
+    useRef<Record<number, HTMLInputElement | null>>({});
+
+  const womenFileRefs =
     useRef<Record<number, HTMLInputElement | null>>({});
 
   useEffect(() => {
@@ -67,14 +98,17 @@ export default function TeamRegistration() {
       Array(totalTeams).fill("")
     );
 
-    setCourtTeamNames(
-      courtSlots.map((slots) =>
-        Array(slots).fill("")
-      )
+    setMenTeamsByCourt(
+      createEmptyGroups(menSlots)
+    );
+
+    setWomenTeamsByCourt(
+      createEmptyGroups(womenSlots)
     );
   }, [
     totalTeams,
-    totalCourts,
+    menCourts,
+    womenCourts,
     isSeparateCourtMode,
   ]);
 
@@ -90,17 +124,25 @@ export default function TeamRegistration() {
   }
 
   function updateCourtTeam(
+    category: TeamCategory,
     courtIndex: number,
     teamIndex: number,
     value: string
   ) {
-    const copy = courtTeamNames.map(
-      (courtTeams) => [...courtTeams]
-    );
+    const setter =
+      category === "MEN"
+        ? setMenTeamsByCourt
+        : setWomenTeamsByCourt;
 
-    copy[courtIndex][teamIndex] = value;
+    setter((current) => {
+      const copy = current.map((court) => [
+        ...court,
+      ]);
 
-    setCourtTeamNames(copy);
+      copy[courtIndex][teamIndex] = value;
+
+      return copy;
+    });
   }
 
   async function importExcel(
@@ -111,7 +153,8 @@ export default function TeamRegistration() {
     if (!file) return;
 
     try {
-      const teams = await importTeamsFromExcel(file);
+      const teams =
+        await importTeamsFromExcel(file);
 
       const copy = Array(totalTeams).fill("");
 
@@ -133,6 +176,7 @@ export default function TeamRegistration() {
 
   async function importExcelForCourt(
     event: React.ChangeEvent<HTMLInputElement>,
+    category: TeamCategory,
     courtIndex: number
   ) {
     const file = event.target.files?.[0];
@@ -140,26 +184,36 @@ export default function TeamRegistration() {
     if (!file) return;
 
     try {
-      const teams = await importTeamsFromExcel(file);
+      const teams =
+        await importTeamsFromExcel(file);
 
-      const copy = courtTeamNames.map(
-        (courtTeams) => [...courtTeams]
-      );
+      const setter =
+        category === "MEN"
+          ? setMenTeamsByCourt
+          : setWomenTeamsByCourt;
 
-      const limit =
-        copy[courtIndex]?.length ?? 0;
+      setter((current) => {
+        const copy = current.map((court) => [
+          ...court,
+        ]);
 
-      teams
-        .slice(0, limit)
-        .forEach((name, index) => {
-          copy[courtIndex][index] = name;
-        });
+        const limit =
+          copy[courtIndex]?.length ?? 0;
 
-      setCourtTeamNames(copy);
+        teams
+          .slice(0, limit)
+          .forEach((name, index) => {
+            copy[courtIndex][index] = name;
+          });
+
+        return copy;
+      });
 
       alert(
-        `${teams.slice(0, limit).length} equipos importados en Cancha ${
-          courtIndex + 1
+        `${teams.length} equipos importados en ${
+          category === "MEN"
+            ? `Cancha ${courtIndex + 1}`
+            : `C. Mujer ${courtIndex + 1}`
         }.`
       );
     } catch {
@@ -169,43 +223,89 @@ export default function TeamRegistration() {
     }
   }
 
+  function buildTeamsFromCourts(
+    groups: string[][],
+    category: TeamCategory
+  ): Team[] {
+    return groups.flatMap(
+      (courtTeams, courtIndex) =>
+        courtTeams
+          .map((name) => name.trim())
+          .filter((name) => name !== "")
+          .map((name) => ({
+            id: 0,
+            name,
+            category,
+            assignedCourt: courtIndex + 1,
+          }))
+    );
+  }
+
+  function validateCourtGroups(
+    groups: string[][],
+    label: string
+  ) {
+    for (
+      let index = 0;
+      index < groups.length;
+      index++
+    ) {
+      const count = groups[index].filter(
+        (name) => name.trim() !== ""
+      ).length;
+
+      if (count < 2) {
+        alert(
+          `${label} ${index + 1} debe tener al menos 2 equipos.`
+        );
+
+        return false;
+      }
+    }
+
+    return true;
+  }
+
   function generateTournament() {
     if (!tournament) return;
 
     let teams: Team[] = [];
 
     if (isSeparateCourtMode) {
-      const courtCounts = courtTeamNames.map(
-        (courtTeams) =>
-          courtTeams.filter(
-            (team) => team.trim() !== ""
-          ).length
-      );
-
-      const invalidCourt = courtCounts.some(
-        (count) => count < 2
-      );
-
-      if (invalidCourt) {
-        alert(
-          "Cada cancha debe tener al menos 2 equipos registrados."
+      const menValid =
+        validateCourtGroups(
+          menTeamsByCourt,
+          "Cancha"
         );
-        return;
+
+      if (!menValid) return;
+
+      if (womenCourts > 0) {
+        const womenValid =
+          validateCourtGroups(
+            womenTeamsByCourt,
+            "C. Mujer"
+          );
+
+        if (!womenValid) return;
       }
 
-      teams = courtTeamNames.flatMap(
-        (courtTeams, courtIndex) =>
-          courtTeams
-            .map((team) => team.trim())
-            .filter((team) => team !== "")
-            .map((name) => ({
-              id: 0,
-              name,
-              assignedCourt: courtIndex + 1,
-            }))
-      );
+      const menTeams =
+        buildTeamsFromCourts(
+          menTeamsByCourt,
+          "MEN"
+        );
 
-      teams = teams.map((team, index) => ({
+      const womenTeams =
+        buildTeamsFromCourts(
+          womenTeamsByCourt,
+          "WOMEN"
+        );
+
+      teams = [
+        ...menTeams,
+        ...womenTeams,
+      ].map((team, index) => ({
         ...team,
         id: index + 1,
       }));
@@ -222,6 +322,7 @@ export default function TeamRegistration() {
       teams = validNames.map((name, index) => ({
         id: index + 1,
         name,
+        category: "MEN",
       }));
     }
 
@@ -254,7 +355,7 @@ export default function TeamRegistration() {
           color: "#cbd5e1",
         }}
       >
-        Total de plazas:{" "}
+        Total de plazas por categoría:{" "}
         <strong>{totalTeams}</strong>
       </p>
 
@@ -266,128 +367,50 @@ export default function TeamRegistration() {
               marginBottom: 25,
             }}
           >
-            Modo relámpago por canchas activo. Los equipos
-            registrados en cada cancha no se mezclarán.
+            Modo relámpago por canchas activo. Varones y mujeres
+            tendrán llaves separadas dentro del mismo campeonato.
           </p>
 
-          <div
+          <h3
             style={{
-              display: "grid",
-              gridTemplateColumns:
-                totalCourts === 2
-                  ? "1fr 1fr"
-                  : "1fr",
-              gap: 25,
-              marginTop: 25,
+              color: "#93c5fd",
             }}
           >
-            {courtSlots.map((slots, courtIndex) => (
-              <div
-                key={courtIndex}
+            VARONES
+          </h3>
+
+          <CourtGrid
+            category="MEN"
+            titlePrefix="Cancha"
+            slots={menSlots}
+            teamsByCourt={menTeamsByCourt}
+            fileRefs={menFileRefs}
+            onImport={importExcelForCourt}
+            onUpdate={updateCourtTeam}
+          />
+
+          {womenCourts > 0 && (
+            <>
+              <h3
                 style={{
-                  background: "#1e293b",
-                  border: "1px solid #334155",
-                  borderRadius: 14,
-                  padding: 20,
+                  color: "#f9a8d4",
+                  marginTop: 35,
                 }}
               >
-                <h3
-                  style={{
-                    marginTop: 0,
-                    color: "#60a5fa",
-                  }}
-                >
-                  🏟 Cancha {courtIndex + 1}
-                </h3>
+                MUJERES
+              </h3>
 
-                <p
-                  style={{
-                    color: "#94a3b8",
-                  }}
-                >
-                  Plazas para esta cancha:{" "}
-                  <strong>{slots}</strong>
-                </p>
-
-                <input
-                  ref={(element) => {
-                    courtFileRefs.current[courtIndex] =
-                      element;
-                  }}
-                  type="file"
-                  accept=".xlsx,.xls"
-                  style={{
-                    display: "none",
-                  }}
-                  onChange={(event) =>
-                    importExcelForCourt(
-                      event,
-                      courtIndex
-                    )
-                  }
-                />
-
-                <button
-                  onClick={() =>
-                    courtFileRefs.current[
-                      courtIndex
-                    ]?.click()
-                  }
-                  style={importButton}
-                >
-                  📥 IMPORTAR EXCEL CANCHA {courtIndex + 1}
-                </button>
-
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns:
-                      slots > 8 ? "1fr 1fr" : "1fr",
-                    gap: 12,
-                    marginTop: 20,
-                  }}
-                >
-                  {Array.from({
-                    length: slots,
-                  }).map((_, teamIndex) => (
-                    <div
-                      key={teamIndex}
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 10,
-                      }}
-                    >
-                      <strong
-                        style={{
-                          width: 30,
-                        }}
-                      >
-                        {teamIndex + 1}
-                      </strong>
-
-                      <input
-                        value={
-                          courtTeamNames[courtIndex]?.[
-                            teamIndex
-                          ] ?? ""
-                        }
-                        onChange={(event) =>
-                          updateCourtTeam(
-                            courtIndex,
-                            teamIndex,
-                            event.target.value
-                          )
-                        }
-                        placeholder={`Equipo ${teamIndex + 1}`}
-                        style={inputStyle}
-                      />
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
+              <CourtGrid
+                category="WOMEN"
+                titlePrefix="C. Mujer"
+                slots={womenSlots}
+                teamsByCourt={womenTeamsByCourt}
+                fileRefs={womenFileRefs}
+                onImport={importExcelForCourt}
+                onUpdate={updateCourtTeam}
+              />
+            </>
+          )}
         </>
       ) : (
         <>
@@ -397,8 +420,8 @@ export default function TeamRegistration() {
               marginBottom: 20,
             }}
           >
-            Puedes dejar plazas vacías. El sistema asignará
-            automáticamente los clasificados cuando corresponda.
+            Puedes dejar plazas vacías. El sistema asignará automáticamente
+            los clasificados cuando corresponda.
           </p>
 
           <div
@@ -480,7 +503,162 @@ export default function TeamRegistration() {
   );
 }
 
-const inputStyle: React.CSSProperties = {
+function CourtGrid({
+  category,
+  titlePrefix,
+  slots,
+  teamsByCourt,
+  fileRefs,
+  onImport,
+  onUpdate,
+}: {
+  category: TeamCategory;
+  titlePrefix: string;
+  slots: number[];
+  teamsByCourt: string[][];
+  fileRefs: React.MutableRefObject<
+    Record<number, HTMLInputElement | null>
+  >;
+  onImport: (
+    event: React.ChangeEvent<HTMLInputElement>,
+    category: TeamCategory,
+    courtIndex: number
+  ) => void;
+  onUpdate: (
+    category: TeamCategory,
+    courtIndex: number,
+    teamIndex: number,
+    value: string
+  ) => void;
+}) {
+  return (
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns:
+          slots.length === 2
+            ? "1fr 1fr"
+            : "repeat(auto-fit, minmax(330px, 1fr))",
+        gap: 25,
+        marginTop: 20,
+      }}
+    >
+      {slots.map((slotCount, courtIndex) => (
+        <div
+          key={courtIndex}
+          style={{
+            background: "#1e293b",
+            border: "1px solid #334155",
+            borderRadius: 14,
+            padding: 20,
+          }}
+        >
+          <h3
+            style={{
+              marginTop: 0,
+              color:
+                category === "MEN"
+                  ? "#60a5fa"
+                  : "#f9a8d4",
+            }}
+          >
+            🏟 {titlePrefix} {courtIndex + 1}
+          </h3>
+
+          <p
+            style={{
+              color: "#94a3b8",
+            }}
+          >
+            Plazas para esta cancha:{" "}
+            <strong>{slotCount}</strong>
+          </p>
+
+          <input
+            ref={(element) => {
+              fileRefs.current[courtIndex] =
+                element;
+            }}
+            type="file"
+            accept=".xlsx,.xls"
+            style={{
+              display: "none",
+            }}
+            onChange={(event) =>
+              onImport(
+                event,
+                category,
+                courtIndex
+              )
+            }
+          />
+
+          <button
+            onClick={() =>
+              fileRefs.current[courtIndex]?.click()
+            }
+            style={importButton}
+          >
+            📥 IMPORTAR EXCEL {titlePrefix} {courtIndex + 1}
+          </button>
+
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns:
+                slotCount > 8
+                  ? "1fr 1fr"
+                  : "1fr",
+              gap: 12,
+              marginTop: 20,
+            }}
+          >
+            {Array.from({
+              length: slotCount,
+            }).map((_, teamIndex) => (
+              <div
+                key={teamIndex}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 10,
+                }}
+              >
+                <strong
+                  style={{
+                    width: 30,
+                  }}
+                >
+                  {teamIndex + 1}
+                </strong>
+
+                <input
+                  value={
+                    teamsByCourt[courtIndex]?.[
+                      teamIndex
+                    ] ?? ""
+                  }
+                  onChange={(event) =>
+                    onUpdate(
+                      category,
+                      courtIndex,
+                      teamIndex,
+                      event.target.value
+                    )
+                  }
+                  placeholder={`Equipo ${teamIndex + 1}`}
+                  style={inputStyle}
+                />
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+const inputStyle: CSSProperties = {
   flex: 1,
   padding: 10,
   borderRadius: 8,
@@ -489,7 +667,7 @@ const inputStyle: React.CSSProperties = {
   color: "white",
 };
 
-const importButton: React.CSSProperties = {
+const importButton: CSSProperties = {
   padding: "12px 18px",
   background: "#16a34a",
   color: "white",
@@ -499,7 +677,7 @@ const importButton: React.CSSProperties = {
   fontWeight: "bold",
 };
 
-const generateButton: React.CSSProperties = {
+const generateButton: CSSProperties = {
   padding: "14px 24px",
   background: "#2563eb",
   color: "white",
