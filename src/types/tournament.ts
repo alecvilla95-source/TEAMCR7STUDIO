@@ -4,8 +4,15 @@ export type TournamentMode =
   | "ELIMINATION"
   | "GROUPS";
 
-export interface Tournament {
+export interface TournamentBreaks {
+  default: number;
+  group: number;
+  quarterFinal: number;
+  semifinal: number;
+  final: number;
+}
 
+export interface Tournament {
   id: string;
 
   name: string;
@@ -20,8 +27,9 @@ export interface Tournament {
 
   duration: number;
 
+  breaks: TournamentBreaks;
+
   createdAt: Date;
 
   rounds: Round[];
-
 }

@@ -1,4 +1,5 @@
 import type { Match } from "../types/match";
+import type { TournamentBreaks } from "../types/tournament";
 
 function addMinutes(
   time: string,
@@ -19,28 +20,100 @@ function addMinutes(
   return `${hh}:${mm}`;
 }
 
+const defaultBreaks: TournamentBreaks = {
+  default: 10,
+  group: 10,
+  quarterFinal: 15,
+  semifinal: 20,
+  final: 30,
+};
+
+function getBreakForMatch(
+  match: Match,
+  totalEliminationRounds: number,
+  breaks: TournamentBreaks
+) {
+  if (match.stage === "GROUP") {
+    return breaks.group;
+  }
+
+  if (totalEliminationRounds <= 0) {
+    return breaks.default;
+  }
+
+  if (match.round === totalEliminationRounds) {
+    return breaks.final;
+  }
+
+  if (match.round === totalEliminationRounds - 1) {
+    return breaks.semifinal;
+  }
+
+  if (match.round === totalEliminationRounds - 2) {
+    return breaks.quarterFinal;
+  }
+
+  return breaks.default;
+}
+
 export function scheduleMatches(
   matches: Match[],
   courts: number,
   startTime: string,
-  duration: number
+  duration: number,
+  breaks: TournamentBreaks = defaultBreaks
 ): Match[] {
+  const fixture = matches.map((match) => ({
+    ...match,
+  }));
 
-  const fixture = [...matches];
+  const safeCourts = Math.max(
+    1,
+    courts
+  );
 
-  fixture.forEach((match, index) => {
+  const eliminationRounds = fixture
+    .filter((match) => match.stage !== "GROUP")
+    .map((match) => match.round);
 
-    match.court = (index % courts) + 1;
+  const totalEliminationRounds =
+    eliminationRounds.length > 0
+      ? Math.max(...eliminationRounds)
+      : 0;
 
-    const block = Math.floor(index / courts);
+  let currentTime = startTime;
 
-    match.time = addMinutes(
-      startTime,
-      block * duration
+  for (
+    let index = 0;
+    index < fixture.length;
+    index += safeCourts
+  ) {
+    const block = fixture.slice(
+      index,
+      index + safeCourts
     );
 
-  });
+    block.forEach((match, courtIndex) => {
+      match.court = courtIndex + 1;
+
+      match.time = currentTime;
+    });
+
+    const maxBreak = Math.max(
+      ...block.map((match) =>
+        getBreakForMatch(
+          match,
+          totalEliminationRounds,
+          breaks
+        )
+      )
+    );
+
+    currentTime = addMinutes(
+      currentTime,
+      duration + maxBreak
+    );
+  }
 
   return fixture;
-
 }

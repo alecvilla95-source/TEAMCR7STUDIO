@@ -11,7 +11,22 @@ import { useChampion } from "../../store/championStore";
 import { useOverlay } from "../../store/overlayStore";
 import { useTimer } from "../../store/timerStore";
 
-import type { TournamentMode } from "../../types/tournament";
+import type {
+  TournamentMode,
+  TournamentBreaks,
+} from "../../types/tournament";
+
+const breakOptions = [
+  0,
+  3,
+  5,
+  10,
+  15,
+  20,
+  30,
+  45,
+  60,
+];
 
 export default function TournamentForm() {
   const { setPage } = useApp();
@@ -43,11 +58,34 @@ export default function TournamentForm() {
   const [duration, setDuration] =
     useState(20);
 
+  const [defaultBreak, setDefaultBreak] =
+    useState(10);
+
+  const [groupBreak, setGroupBreak] =
+    useState(10);
+
+  const [quarterBreak, setQuarterBreak] =
+    useState(15);
+
+  const [semifinalBreak, setSemifinalBreak] =
+    useState(20);
+
+  const [finalBreak, setFinalBreak] =
+    useState(30);
+
   function create() {
     if (!name.trim()) {
       alert("Ingrese el nombre del campeonato.");
       return;
     }
+
+    const breaks: TournamentBreaks = {
+      default: defaultBreak,
+      group: groupBreak,
+      quarterFinal: quarterBreak,
+      semifinal: semifinalBreak,
+      final: finalBreak,
+    };
 
     createTournament({
       name,
@@ -56,6 +94,7 @@ export default function TournamentForm() {
       courts,
       startTime,
       duration,
+      breaks,
     });
 
     setTeams([]);
@@ -72,7 +111,7 @@ export default function TournamentForm() {
   }
 
   return (
-    <div style={{ maxWidth: 700 }}>
+    <div style={{ maxWidth: 800 }}>
       <h2>Nuevo Campeonato</h2>
 
       <p
@@ -82,8 +121,8 @@ export default function TournamentForm() {
           marginBottom: 30,
         }}
       >
-        Al crear un nuevo campeonato se limpiarán los equipos,
-        fixture, resultados, campeón, OBS y cronómetro anteriores.
+        Define duración del partido y tiempo de organización
+        entre encuentros. El horario se calculará automáticamente.
       </p>
 
       <div
@@ -176,6 +215,55 @@ export default function TournamentForm() {
           style={inputStyle}
         />
 
+        <div style={sectionBox}>
+          <h3
+            style={{
+              marginTop: 0,
+            }}
+          >
+            ⏱ Tiempo de organización / descanso
+          </h3>
+
+          <p
+            style={{
+              color: "#94a3b8",
+            }}
+          >
+            Estos minutos se suman después de cada partido para organizar
+            el siguiente encuentro, descansos, penales o retrasos.
+          </p>
+
+          <BreakSelect
+            label="Fase de grupos"
+            value={groupBreak}
+            onChange={setGroupBreak}
+          />
+
+          <BreakSelect
+            label="Rondas iniciales"
+            value={defaultBreak}
+            onChange={setDefaultBreak}
+          />
+
+          <BreakSelect
+            label="Cuartos de final"
+            value={quarterBreak}
+            onChange={setQuarterBreak}
+          />
+
+          <BreakSelect
+            label="Semifinal"
+            value={semifinalBreak}
+            onChange={setSemifinalBreak}
+          />
+
+          <BreakSelect
+            label="Final"
+            value={finalBreak}
+            onChange={setFinalBreak}
+          />
+        </div>
+
         <button
           onClick={create}
           style={buttonStyle}
@@ -187,6 +275,47 @@ export default function TournamentForm() {
   );
 }
 
+function BreakSelect({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: number;
+  onChange: (value: number) => void;
+}) {
+  return (
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "1fr 180px",
+        gap: 15,
+        alignItems: "center",
+        marginTop: 12,
+      }}
+    >
+      <label>{label}</label>
+
+      <select
+        value={value}
+        onChange={(e) =>
+          onChange(Number(e.target.value))
+        }
+        style={inputStyle}
+      >
+        {breakOptions.map((option) => (
+          <option
+            key={option}
+            value={option}
+          >
+            {option} min
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
 const inputStyle: CSSProperties = {
   padding: 12,
   borderRadius: 8,
@@ -194,6 +323,14 @@ const inputStyle: CSSProperties = {
   background: "#1e293b",
   color: "white",
   fontSize: 16,
+};
+
+const sectionBox: CSSProperties = {
+  background: "#0f172a",
+  border: "1px solid #334155",
+  borderRadius: 12,
+  padding: 20,
+  marginTop: 10,
 };
 
 const buttonStyle: CSSProperties = {

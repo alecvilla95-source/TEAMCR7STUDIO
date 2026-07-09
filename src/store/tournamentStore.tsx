@@ -8,6 +8,7 @@ import {
 import type {
   Tournament,
   TournamentMode,
+  TournamentBreaks,
 } from "../types/tournament";
 
 import {
@@ -22,6 +23,7 @@ interface CreateTournamentData {
   courts: number;
   startTime: string;
   duration: number;
+  breaks: TournamentBreaks;
 }
 
 interface TournamentContextType {
@@ -67,6 +69,8 @@ export function TournamentProvider({
       startTime: data.startTime,
 
       duration: data.duration,
+
+      breaks: data.breaks,
 
       createdAt: new Date(),
 

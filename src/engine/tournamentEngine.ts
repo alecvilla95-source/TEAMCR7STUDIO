@@ -22,6 +22,7 @@ export function buildTournament(
     matches,
     tournament.courts,
     tournament.startTime,
-    tournament.duration
+    tournament.duration,
+    tournament.breaks
   );
 }
