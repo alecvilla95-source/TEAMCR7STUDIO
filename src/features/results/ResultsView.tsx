@@ -19,6 +19,7 @@ import { usePlayers } from "../../store/playerStore";
 import { useGoals } from "../../store/goalStore";
 
 import { applyResult } from "../../engine/resultEngine";
+import { exportTopScorersToExcel } from "../../services/goalExcelService";
 
 type VenueCategory =
   | TeamCategory
@@ -668,6 +669,16 @@ export default function ResultsView() {
     printWindow.document.close();
   }
 
+  function exportTopScorersExcel() {
+    exportTopScorersToExcel({
+      tournamentName:
+        tournament?.name ?? "TEAMCR7STUDIO",
+      rows: topScorers,
+      showWomen:
+        (tournament?.womenCourts ?? 0) > 0,
+    });
+  }
+
   function clearObs() {
     setActiveMatchId(null);
   }
@@ -808,6 +819,7 @@ export default function ResultsView() {
             (tournament?.womenCourts ?? 0) > 0
           }
           onPrint={printTopScorers}
+          onExportExcel={exportTopScorersExcel}
         />
       </div>
 
@@ -1537,10 +1549,12 @@ function TopScorersPanel({
   topScorers,
   showWomen,
   onPrint,
+  onExportExcel,
 }: {
   topScorers: TopScorerRow[];
   showWomen: boolean;
   onPrint: () => void;
+  onExportExcel: () => void;
 }) {
   const menRows = topScorers.filter(
     (row) => row.category !== "WOMEN"
@@ -1570,12 +1584,27 @@ function TopScorersPanel({
           ⚽ Tabla de Goleadores
         </h2>
 
-        <button
-          onClick={onPrint}
-          style={printScorersButton}
+        <div
+          style={{
+            display: "flex",
+            gap: 10,
+            flexWrap: "wrap",
+          }}
         >
-          📄 Imprimir / PDF Goleadores
-        </button>
+          <button
+            onClick={onPrint}
+            style={printScorersButton}
+          >
+            📄 Imprimir / PDF Goleadores
+          </button>
+
+          <button
+            onClick={onExportExcel}
+            style={excelScorersButton}
+          >
+            📊 Exportar Excel
+          </button>
+        </div>
       </div>
 
       <div style={topScorersGrid}>
@@ -1786,6 +1815,16 @@ const topScorersGrid: CSSProperties = {
 const printScorersButton: CSSProperties = {
   padding: "12px 18px",
   background: "#f97316",
+  color: "white",
+  border: "none",
+  borderRadius: 8,
+  cursor: "pointer",
+  fontWeight: "bold",
+};
+
+const excelScorersButton: CSSProperties = {
+  padding: "12px 18px",
+  background: "#16a34a",
   color: "white",
   border: "none",
   borderRadius: 8,
