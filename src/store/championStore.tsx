@@ -1,6 +1,7 @@
 import {
   createContext,
   useContext,
+  useEffect,
   useState,
   type ReactNode,
 } from "react";
@@ -21,6 +22,8 @@ const ChampionContext =
   createContext<ChampionContextType>(
     {} as ChampionContextType
   );
+
+const STORAGE_KEY = "teamcr7studio_champion";
 
 export function ChampionProvider({
   children,
@@ -43,6 +46,31 @@ export function ChampionProvider({
       team
     );
   }
+
+  useEffect(() => {
+    function handleStorage(event: StorageEvent) {
+      if (event.key !== STORAGE_KEY) return;
+
+      const updated = loadData<Team | null>(
+        "champion",
+        null
+      );
+
+      setChampionState(updated);
+    }
+
+    window.addEventListener(
+      "storage",
+      handleStorage
+    );
+
+    return () => {
+      window.removeEventListener(
+        "storage",
+        handleStorage
+      );
+    };
+  }, []);
 
   return (
     <ChampionContext.Provider

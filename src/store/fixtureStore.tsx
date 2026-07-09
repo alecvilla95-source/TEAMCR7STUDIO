@@ -1,6 +1,7 @@
 import {
   createContext,
   useContext,
+  useEffect,
   useState,
   type ReactNode,
 } from "react";
@@ -23,6 +24,8 @@ const FixtureContext =
     {} as FixtureContextType
   );
 
+const STORAGE_KEY = "teamcr7studio_fixture";
+
 export function FixtureProvider({
   children,
 }: {
@@ -44,6 +47,31 @@ export function FixtureProvider({
       fixture
     );
   }
+
+  useEffect(() => {
+    function handleStorage(event: StorageEvent) {
+      if (event.key !== STORAGE_KEY) return;
+
+      const updated = loadData<Match[]>(
+        "fixture",
+        []
+      );
+
+      setFixtureState(updated);
+    }
+
+    window.addEventListener(
+      "storage",
+      handleStorage
+    );
+
+    return () => {
+      window.removeEventListener(
+        "storage",
+        handleStorage
+      );
+    };
+  }, []);
 
   return (
     <FixtureContext.Provider
