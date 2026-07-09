@@ -5,6 +5,10 @@ export type MatchStatus =
   | "PLAYING"
   | "FINISHED";
 
+export type MatchStage =
+  | "ELIMINATION"
+  | "GROUP";
+
 export interface Match {
   id: number;
 
@@ -39,4 +43,8 @@ export interface Match {
   sourceMatchA?: number | null;
 
   sourceMatchB?: number | null;
+
+  stage?: MatchStage;
+
+  groupName?: string;
 }

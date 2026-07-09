@@ -2,15 +2,21 @@ import type { Team } from "../types/team";
 import type { Match } from "../types/match";
 import type { Tournament } from "../types/tournament";
 
-import { generateFixture } from "./fixtureEngine";
+import { generateFixtureV2 } from "./fixtureEngineV2";
+import { buildGroupStage } from "./groupEngine";
 import { scheduleMatches } from "./scheduleEngine";
 
 export function buildTournament(
   tournament: Tournament,
   teams: Team[]
 ): Match[] {
+  let matches: Match[] = [];
 
-  const matches = generateFixture(teams);
+  if (tournament.mode === "GROUPS") {
+    matches = buildGroupStage(teams);
+  } else {
+    matches = generateFixtureV2(teams);
+  }
 
   return scheduleMatches(
     matches,
@@ -18,5 +24,4 @@ export function buildTournament(
     tournament.startTime,
     tournament.duration
   );
-
 }
