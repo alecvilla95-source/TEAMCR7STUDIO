@@ -1,11 +1,21 @@
 import type { Match } from "../types/match";
-import type { Team } from "../types/team";
+import type {
+  Team,
+  TeamCategory,
+} from "../types/team";
 
 import { generateFixtureV2 } from "./fixtureEngineV2";
 
 type SourceParticipant = {
   matchId: number;
 };
+
+interface BuildCourtBracketsOptions {
+  startId?: number;
+  category?: TeamCategory;
+  courtLabelPrefix?: string;
+  finalLabel?: string;
+}
 
 function nextPowerOfTwo(value: number): number {
   return 2 ** Math.ceil(Math.log2(value));
@@ -14,7 +24,9 @@ function nextPowerOfTwo(value: number): number {
 function cloneMatchesForCourt(
   matches: Match[],
   court: number,
-  startId: number
+  startId: number,
+  category: TeamCategory | undefined,
+  courtLabel: string
 ) {
   const idMap = new Map<number, number>();
 
@@ -30,6 +42,10 @@ function cloneMatchesForCourt(
     id: idMap.get(match.id)!,
 
     court,
+
+    courtLabel,
+
+    category,
 
     stage: "ELIMINATION" as const,
 
@@ -55,7 +71,9 @@ function cloneMatchesForCourt(
 function createGeneralMatch(
   id: number,
   round: number,
-  order: number
+  order: number,
+  category: TeamCategory | undefined,
+  courtLabel: string
 ): Match {
   return {
     id,
@@ -65,6 +83,10 @@ function createGeneralMatch(
     order,
 
     court: 1,
+
+    courtLabel,
+
+    category,
 
     time: "",
 
@@ -118,13 +140,12 @@ function buildGeneralFinals(
   courtFinals: Match[],
   startId: number,
   startRound: number,
-  allMatches: Match[]
+  allMatches: Match[],
+  category: TeamCategory | undefined,
+  finalLabel: string
 ) {
-  const generated: Match[] = [];
-
   if (courtFinals.length <= 1) {
     return {
-      matches: generated,
       nextId: startId,
     };
   }
@@ -169,7 +190,9 @@ function buildGeneralFinals(
       const match = createGeneralMatch(
         nextId++,
         round,
-        index + 1
+        index + 1,
+        category,
+        finalLabel
       );
 
       const participantA =
@@ -196,8 +219,6 @@ function buildGeneralFinals(
         );
       }
 
-      generated.push(match);
-
       allMatches.push(match);
 
       roundMatches.push(match);
@@ -215,25 +236,33 @@ function buildGeneralFinals(
   }
 
   return {
-    matches: generated,
     nextId,
   };
 }
 
 export function buildCourtBrackets(
   teams: Team[],
-  courts: number
+  courts: number,
+  options: BuildCourtBracketsOptions = {}
 ): Match[] {
   const safeCourts = Math.max(
     1,
     courts
   );
 
+  const category = options.category;
+
+  const courtLabelPrefix =
+    options.courtLabelPrefix ?? "Cancha";
+
+  const finalLabel =
+    options.finalLabel ?? "Final General";
+
   const allMatches: Match[] = [];
 
   const courtFinals: Match[] = [];
 
-  let nextId = 1;
+  let nextId = options.startId ?? 1;
 
   for (
     let court = 1;
@@ -251,11 +280,16 @@ export function buildCourtBrackets(
     const localBracket =
       generateFixtureV2(courtTeams);
 
+    const courtLabel =
+      `${courtLabelPrefix} ${court}`;
+
     const cloned =
       cloneMatchesForCourt(
         localBracket,
         court,
-        nextId
+        nextId,
+        category,
+        courtLabel
       );
 
     nextId = cloned.nextId;
@@ -288,7 +322,9 @@ export function buildCourtBrackets(
       courtFinals,
       nextId,
       maxRound + 1,
-      allMatches
+      allMatches,
+      category,
+      finalLabel
     );
 
   nextId = general.nextId;

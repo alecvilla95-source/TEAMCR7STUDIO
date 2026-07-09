@@ -7,6 +7,16 @@ import { buildGroupStage } from "./groupEngine";
 import { buildCourtBrackets } from "./courtBracketEngine";
 import { scheduleMatches } from "./scheduleEngine";
 
+function getNextMatchId(matches: Match[]) {
+  if (matches.length === 0) {
+    return 1;
+  }
+
+  return Math.max(
+    ...matches.map((match) => match.id)
+  ) + 1;
+}
+
 export function buildTournament(
   tournament: Tournament,
   teams: Team[]
@@ -19,17 +29,52 @@ export function buildTournament(
     tournament.courtMode === "SEPARATE_BRACKETS" &&
     tournament.courts > 1
   ) {
-    matches = buildCourtBrackets(
-      teams,
-      tournament.courts
+    const menTeams = teams.filter(
+      (team) => team.category !== "WOMEN"
     );
+
+    const womenTeams = teams.filter(
+      (team) => team.category === "WOMEN"
+    );
+
+    const menMatches =
+      buildCourtBrackets(
+        menTeams,
+        tournament.courts,
+        {
+          startId: 1,
+          category: "MEN",
+          courtLabelPrefix: "Cancha",
+          finalLabel: "Final Varones",
+        }
+      );
+
+    const womenMatches =
+      tournament.womenCourts > 0
+        ? buildCourtBrackets(
+            womenTeams,
+            tournament.womenCourts,
+            {
+              startId: getNextMatchId(menMatches),
+              category: "WOMEN",
+              courtLabelPrefix: "C. Mujer",
+              finalLabel: "Final Mujeres",
+            }
+          )
+        : [];
+
+    matches = [
+      ...menMatches,
+      ...womenMatches,
+    ];
   } else {
     matches = generateFixtureV2(teams);
   }
 
   return scheduleMatches(
     matches,
-    tournament.courts,
+    tournament.courts +
+      (tournament.womenCourts ?? 0),
     tournament.startTime,
     tournament.duration,
     tournament.breaks

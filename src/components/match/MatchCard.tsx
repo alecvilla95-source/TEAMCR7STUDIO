@@ -25,6 +25,10 @@ export default function MatchCard({
     match.penaltyA !== undefined &&
     match.penaltyB !== undefined;
 
+  const courtLabel =
+    match.courtLabel ??
+    `Cancha ${match.court || "-"}`;
+
   function teamLabel(
     team: typeof match.teamA,
     sourceMatch: number | null | undefined
@@ -88,7 +92,7 @@ export default function MatchCard({
         </span>
 
         <span>
-          🕒 {match.time || "--:--"} | 🏟 Cancha {match.court || "-"}
+          🕒 {match.time || "--:--"} | 🏟 {courtLabel}
         </span>
       </div>
 

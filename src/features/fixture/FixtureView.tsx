@@ -1,6 +1,11 @@
+import {
+  type CSSProperties,
+} from "react";
+
 import MatchCard from "../../components/match/MatchCard";
 
 import type { Match } from "../../types/match";
+import type { TeamCategory } from "../../types/team";
 
 import { useFixture } from "../../store/fixtureStore";
 import { useTournament } from "../../store/tournamentStore";
@@ -9,11 +14,74 @@ import { useApp } from "../../store/appStore";
 
 import { getRoundName } from "../../utils/tournamentUtils";
 
+type VenueCategory =
+  | TeamCategory
+  | "GENERAL";
+
 interface RoundGroup {
   key: string;
   round: number;
   name: string;
   matches: Match[];
+}
+
+interface VenueGroup {
+  key: string;
+  label: string;
+  category: VenueCategory;
+  court: number;
+  matches: Match[];
+}
+
+function getCategoryLabel(
+  category: VenueCategory
+) {
+  if (category === "MEN") return "VARONES";
+
+  if (category === "WOMEN") return "MUJERES";
+
+  return "GENERAL";
+}
+
+function getCategoryColor(
+  category: VenueCategory
+) {
+  if (category === "WOMEN") return "#f9a8d4";
+
+  if (category === "MEN") return "#93c5fd";
+
+  return "#facc15";
+}
+
+function getSmartRoundName(
+  matches: Match[],
+  round: number
+) {
+  const first = matches[0];
+
+  if (first?.groupName) {
+    return first.groupName;
+  }
+
+  const hasFinalLabel = matches.some((match) =>
+    (match.courtLabel ?? "")
+      .toUpperCase()
+      .includes("FINAL")
+  );
+
+  if (hasFinalLabel) {
+    return "FINALES GENERALES";
+  }
+
+  const hasCourtLabels = matches.some(
+    (match) => match.courtLabel
+  );
+
+  if (hasCourtLabels) {
+    return `RONDA ${round}`;
+  }
+
+  return getRoundName(matches.length * 2);
 }
 
 function groupByRoundOrGroup(
@@ -40,48 +108,95 @@ function groupByRoundOrGroup(
           return a.round - b.round;
         }
 
-        return a.order - b.order;
+        if (a.order !== b.order) {
+          return a.order - b.order;
+        }
+
+        return a.court - b.court;
       });
 
-      const first = sorted[0];
+      const round =
+        sorted[0]?.round ?? 1;
 
       return {
         key,
-        round: first?.round ?? 1,
-        name:
-          first?.groupName ??
-          getRoundName(sorted.length * 2),
+        round,
+        name: getSmartRoundName(
+          sorted,
+          round
+        ),
         matches: sorted,
       };
     })
     .sort((a, b) => a.round - b.round);
 }
 
-function groupByCourt(matches: Match[]) {
-  const map = new Map<number, Match[]>();
+function groupByVenue(
+  matches: Match[]
+): VenueGroup[] {
+  const map = new Map<string, VenueGroup>();
 
   matches.forEach((match) => {
-    const court = match.court || 1;
+    const label =
+      match.courtLabel ??
+      `Cancha ${match.court || 1}`;
 
-    if (!map.has(court)) {
-      map.set(court, []);
+    const category: VenueCategory =
+      match.category ?? "GENERAL";
+
+    const key =
+      `${category}_${label}`;
+
+    if (!map.has(key)) {
+      map.set(key, {
+        key,
+        label,
+        category,
+        court: match.court || 1,
+        matches: [],
+      });
     }
 
-    map.get(court)!.push(match);
+    map.get(key)!.matches.push(match);
   });
 
-  return Array.from(map.entries())
-    .sort((a, b) => a[0] - b[0])
-    .map(([court, list]) => ({
-      court,
-      matches: [...list].sort((a, b) => {
+  const categoryOrder: Record<
+    VenueCategory,
+    number
+  > = {
+    MEN: 1,
+    WOMEN: 2,
+    GENERAL: 3,
+  };
+
+  return Array.from(map.values())
+    .map((venue) => ({
+      ...venue,
+      matches: [...venue.matches].sort((a, b) => {
         if (a.time !== b.time) {
           return a.time.localeCompare(b.time);
         }
 
         return a.order - b.order;
       }),
-    }));
+    }))
+    .sort((a, b) => {
+      if (
+        categoryOrder[a.category] !==
+        categoryOrder[b.category]
+      ) {
+        return (
+          categoryOrder[a.category] -
+          categoryOrder[b.category]
+        );
+      }
+
+      if (a.court !== b.court) {
+        return a.court - b.court;
+      }
+
+      return a.label.localeCompare(b.label);
+    });
 }
 
 export default function FixtureView() {
@@ -93,7 +208,8 @@ export default function FixtureView() {
 
   const { setPage } = useApp();
 
-  const rounds = groupByRoundOrGroup(fixture);
+  const rounds =
+    groupByRoundOrGroup(fixture);
 
   const finishedMatches = fixture.filter(
     (match) => match.status === "FINISHED"
@@ -105,15 +221,7 @@ export default function FixtureView() {
 
   return (
     <div>
-      <div
-        style={{
-          background: "#1e293b",
-          border: "1px solid #334155",
-          borderRadius: 14,
-          padding: 25,
-          marginBottom: 30,
-        }}
-      >
+      <div style={headerBox}>
         <div
           style={{
             display: "flex",
@@ -188,15 +296,7 @@ export default function FixtureView() {
           </div>
         </div>
 
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns:
-              "repeat(auto-fit, minmax(150px, 1fr))",
-            gap: 15,
-            marginTop: 25,
-          }}
-        >
+        <div style={infoGrid}>
           <InfoBox
             label="Equipos"
             value={teams.length}
@@ -213,8 +313,13 @@ export default function FixtureView() {
           />
 
           <InfoBox
-            label="Canchas"
+            label="Canchas Varones"
             value={tournament?.courts ?? 0}
+          />
+
+          <InfoBox
+            label="Canchas Mujeres"
+            value={tournament?.womenCourts ?? 0}
           />
 
           <InfoBox
@@ -230,88 +335,112 @@ export default function FixtureView() {
       </div>
 
       {fixture.length === 0 && (
-        <div
-          style={{
-            background: "#1e293b",
-            border: "1px solid #334155",
-            borderRadius: 14,
-            padding: 25,
-            color: "#94a3b8",
-          }}
-        >
+        <div style={emptyBox}>
           Todavía no hay fixture generado.
         </div>
       )}
 
       {rounds.map((roundGroup) => {
-        const courts = groupByCourt(
-          roundGroup.matches
-        );
+        const venues =
+          groupByVenue(roundGroup.matches);
 
         return (
-          <div
+          <section
             key={roundGroup.key}
             style={{
-              marginBottom: 45,
+              marginBottom: 50,
               breakInside: "avoid",
             }}
           >
-            <h3
+            <h2
               style={{
-                borderBottom: "2px solid #334155",
-                paddingBottom: 10,
-                marginBottom: 20,
                 color: "#60a5fa",
-                fontSize: 24,
+                fontSize: 26,
+                borderBottom: "3px solid #334155",
+                paddingBottom: 12,
+                marginBottom: 25,
               }}
             >
               {roundGroup.name}
-            </h3>
+            </h2>
 
             <div
               style={{
-                display: "grid",
-                gridTemplateColumns: `repeat(${courts.length}, minmax(330px, 1fr))`,
-                gap: 22,
-                alignItems: "start",
                 overflowX: "auto",
+                paddingBottom: 12,
               }}
             >
-              {courts.map((courtGroup) => (
-                <div
-                  key={courtGroup.court}
-                  style={{
-                    background: "#0f172a",
-                    border: "1px solid #334155",
-                    borderRadius: 14,
-                    padding: 16,
-                  }}
-                >
-                  <h4
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: `repeat(${venues.length}, minmax(320px, 1fr))`,
+                  minWidth:
+                    venues.length > 3
+                      ? venues.length * 340
+                      : undefined,
+                  gap: 22,
+                  alignItems: "start",
+                }}
+              >
+                {venues.map((venue) => (
+                  <div
+                    key={venue.key}
                     style={{
-                      marginTop: 0,
-                      marginBottom: 16,
-                      color: "#f8fafc",
-                      textAlign: "center",
-                      fontSize: 22,
-                      borderBottom: "1px solid #334155",
-                      paddingBottom: 12,
+                      background: "#0f172a",
+                      border: `1px solid ${getCategoryColor(
+                        venue.category
+                      )}`,
+                      borderRadius: 14,
+                      padding: 16,
                     }}
                   >
-                    🏟 Cancha {courtGroup.court}
-                  </h4>
+                    <div
+                      style={{
+                        textAlign: "center",
+                        color: getCategoryColor(
+                          venue.category
+                        ),
+                        fontWeight: "bold",
+                        fontSize: 13,
+                        marginBottom: 8,
+                      }}
+                    >
+                      {getCategoryLabel(
+                        venue.category
+                      )}
+                    </div>
 
-                  {courtGroup.matches.map((match, index) => (
-                    <MatchCard
-                      key={match.id}
-                      match={match}
-                      displayLabel={`Partido ${index + 1}`}
-                    />
-                  ))}
-                </div>
-              ))}
+                    <h4
+                      style={{
+                        marginTop: 0,
+                        marginBottom: 16,
+                        color: "#f8fafc",
+                        textAlign: "center",
+                        fontSize: 22,
+                        borderBottom:
+                          "1px solid #334155",
+                        paddingBottom: 12,
+                      }}
+                    >
+                      🏟 {venue.label}
+                    </h4>
+
+                    {venue.matches.map(
+                      (match, index) => (
+                        <MatchCard
+                          key={match.id}
+                          match={match}
+                          displayLabel={`Partido ${
+                            index + 1
+                          }`}
+                        />
+                      )
+                    )}
+                  </div>
+                ))}
+              </div>
             </div>
-          </div>
+          </section>
         );
       })}
     </div>
@@ -326,14 +455,7 @@ function InfoBox({
   value: string | number;
 }) {
   return (
-    <div
-      style={{
-        background: "#0f172a",
-        border: "1px solid #334155",
-        borderRadius: 10,
-        padding: 14,
-      }}
-    >
+    <div style={infoBox}>
       <div
         style={{
           color: "#94a3b8",
@@ -356,7 +478,38 @@ function InfoBox({
   );
 }
 
-const primaryButton: React.CSSProperties = {
+const headerBox: CSSProperties = {
+  background: "#1e293b",
+  border: "1px solid #334155",
+  borderRadius: 14,
+  padding: 25,
+  marginBottom: 30,
+};
+
+const infoGrid: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns:
+    "repeat(auto-fit, minmax(150px, 1fr))",
+  gap: 15,
+  marginTop: 25,
+};
+
+const infoBox: CSSProperties = {
+  background: "#0f172a",
+  border: "1px solid #334155",
+  borderRadius: 10,
+  padding: 14,
+};
+
+const emptyBox: CSSProperties = {
+  background: "#1e293b",
+  border: "1px solid #334155",
+  borderRadius: 14,
+  padding: 25,
+  color: "#94a3b8",
+};
+
+const primaryButton: CSSProperties = {
   padding: "12px 18px",
   background: "#2563eb",
   color: "white",
@@ -366,7 +519,7 @@ const primaryButton: React.CSSProperties = {
   fontWeight: "bold",
 };
 
-const secondaryButton: React.CSSProperties = {
+const secondaryButton: CSSProperties = {
   padding: "12px 18px",
   background: "#334155",
   color: "white",

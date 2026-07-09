@@ -1,4 +1,7 @@
-import type { Team } from "./team";
+import type {
+  Team,
+  TeamCategory,
+} from "./team";
 
 export type MatchStatus =
   | "PENDING"
@@ -17,6 +20,10 @@ export interface Match {
   order: number;
 
   court: number;
+
+  courtLabel?: string;
+
+  category?: TeamCategory;
 
   time: string;
 
