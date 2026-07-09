@@ -4,6 +4,10 @@ export type TournamentMode =
   | "ELIMINATION"
   | "GROUPS";
 
+export type TournamentCourtMode =
+  | "SHARED"
+  | "SEPARATE_BRACKETS";
+
 export interface TournamentBreaks {
   default: number;
   group: number;
@@ -18,6 +22,8 @@ export interface Tournament {
   name: string;
 
   mode: TournamentMode;
+
+  courtMode: TournamentCourtMode;
 
   teams: number;
 

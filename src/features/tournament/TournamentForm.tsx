@@ -13,6 +13,7 @@ import { useTimer } from "../../store/timerStore";
 
 import type {
   TournamentMode,
+  TournamentCourtMode,
   TournamentBreaks,
 } from "../../types/tournament";
 
@@ -47,6 +48,9 @@ export default function TournamentForm() {
 
   const [mode, setMode] =
     useState<TournamentMode>("ELIMINATION");
+
+  const [courtMode, setCourtMode] =
+    useState<TournamentCourtMode>("SHARED");
 
   const [teams, setTeamsCount] = useState(16);
 
@@ -90,6 +94,11 @@ export default function TournamentForm() {
     createTournament({
       name,
       mode,
+      courtMode:
+        mode === "ELIMINATION" &&
+        courts > 1
+          ? courtMode
+          : "SHARED",
       teams,
       courts,
       startTime,
@@ -111,7 +120,7 @@ export default function TournamentForm() {
   }
 
   return (
-    <div style={{ maxWidth: 800 }}>
+    <div style={{ maxWidth: 850 }}>
       <h2>Nuevo Campeonato</h2>
 
       <p
@@ -121,8 +130,8 @@ export default function TournamentForm() {
           marginBottom: 30,
         }}
       >
-        Define duración del partido y tiempo de organización
-        entre encuentros. El horario se calculará automáticamente.
+        Define modalidad, canchas, duración y descansos. Para relámpagos
+        puedes usar llaves separadas por cancha.
       </p>
 
       <div
@@ -191,6 +200,46 @@ export default function TournamentForm() {
           <option value={3}>3 Canchas</option>
           <option value={4}>4 Canchas</option>
         </select>
+
+        {mode === "ELIMINATION" && courts > 1 && (
+          <div style={sectionBox}>
+            <h3
+              style={{
+                marginTop: 0,
+              }}
+            >
+              🏟 Sistema de canchas
+            </h3>
+
+            <p
+              style={{
+                color: "#94a3b8",
+              }}
+            >
+              En relámpagos puedes separar los equipos por cancha.
+              Cada cancha tendrá su propia llave y al final los ganadores
+              se enfrentarán en la final general.
+            </p>
+
+            <select
+              value={courtMode}
+              onChange={(e) =>
+                setCourtMode(
+                  e.target.value as TournamentCourtMode
+                )
+              }
+              style={inputStyle}
+            >
+              <option value="SHARED">
+                Repartir partidos por horario
+              </option>
+
+              <option value="SEPARATE_BRACKETS">
+                Llaves separadas por cancha
+              </option>
+            </select>
+          </div>
+        )}
 
         <label>Hora de Inicio</label>
 

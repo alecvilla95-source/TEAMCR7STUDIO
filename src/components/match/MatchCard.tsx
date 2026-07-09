@@ -3,9 +3,13 @@ import type { Match } from "../../types/match";
 
 interface Props {
   match: Match;
+  displayLabel?: string;
 }
 
-export default function MatchCard({ match }: Props) {
+export default function MatchCard({
+  match,
+  displayLabel,
+}: Props) {
   const finished =
     match.status === "FINISHED";
 
@@ -78,7 +82,9 @@ export default function MatchCard({ match }: Props) {
         }}
       >
         <span>
-          <strong>Partido {match.id}</strong>
+          <strong>
+            {displayLabel ?? `Partido ${match.id}`}
+          </strong>
         </span>
 
         <span>
@@ -172,7 +178,7 @@ export default function MatchCard({ match }: Props) {
               fontWeight: "bold",
             }}
           >
-            🏆 Ganador: {match.winner?.name}
+            🏆 Ganador: {match.winner?.name ?? "Empate"}
           </span>
         )}
       </div>

@@ -1,11 +1,88 @@
+import MatchCard from "../../components/match/MatchCard";
+
+import type { Match } from "../../types/match";
+
 import { useFixture } from "../../store/fixtureStore";
 import { useTournament } from "../../store/tournamentStore";
 import { useTeams } from "../../store/teamStore";
 import { useApp } from "../../store/appStore";
 
-import { groupMatches } from "../../utils/groupMatches";
+import { getRoundName } from "../../utils/tournamentUtils";
 
-import MatchCard from "../../components/match/MatchCard";
+interface RoundGroup {
+  key: string;
+  round: number;
+  name: string;
+  matches: Match[];
+}
+
+function groupByRoundOrGroup(
+  matches: Match[]
+): RoundGroup[] {
+  const map = new Map<string, Match[]>();
+
+  matches.forEach((match) => {
+    const key =
+      match.groupName ??
+      `ROUND_${match.round}`;
+
+    if (!map.has(key)) {
+      map.set(key, []);
+    }
+
+    map.get(key)!.push(match);
+  });
+
+  return Array.from(map.entries())
+    .map(([key, list]) => {
+      const sorted = [...list].sort((a, b) => {
+        if (a.round !== b.round) {
+          return a.round - b.round;
+        }
+
+        return a.order - b.order;
+      });
+
+      const first = sorted[0];
+
+      return {
+        key,
+        round: first?.round ?? 1,
+        name:
+          first?.groupName ??
+          getRoundName(sorted.length * 2),
+        matches: sorted,
+      };
+    })
+    .sort((a, b) => a.round - b.round);
+}
+
+function groupByCourt(matches: Match[]) {
+  const map = new Map<number, Match[]>();
+
+  matches.forEach((match) => {
+    const court = match.court || 1;
+
+    if (!map.has(court)) {
+      map.set(court, []);
+    }
+
+    map.get(court)!.push(match);
+  });
+
+  return Array.from(map.entries())
+    .sort((a, b) => a[0] - b[0])
+    .map(([court, list]) => ({
+      court,
+      matches: [...list].sort((a, b) => {
+        if (a.time !== b.time) {
+          return a.time.localeCompare(b.time);
+        }
+
+        return a.order - b.order;
+      }),
+    }));
+}
 
 export default function FixtureView() {
   const { fixture } = useFixture();
@@ -16,7 +93,7 @@ export default function FixtureView() {
 
   const { setPage } = useApp();
 
-  const rounds = groupMatches(fixture);
+  const rounds = groupByRoundOrGroup(fixture);
 
   const finishedMatches = fixture.filter(
     (match) => match.status === "FINISHED"
@@ -77,6 +154,13 @@ export default function FixtureView() {
                 {tournament?.mode === "GROUPS"
                   ? "Fase de Grupos"
                   : "Eliminación Directa"}
+              </strong>
+              {" | "}
+              Sistema:{" "}
+              <strong>
+                {tournament?.courtMode === "SEPARATE_BRACKETS"
+                  ? "Llaves separadas por cancha"
+                  : "Reparto por horario"}
               </strong>
             </p>
           </div>
@@ -145,7 +229,7 @@ export default function FixtureView() {
         </div>
       </div>
 
-      {rounds.length === 0 && (
+      {fixture.length === 0 && (
         <div
           style={{
             background: "#1e293b",
@@ -159,33 +243,77 @@ export default function FixtureView() {
         </div>
       )}
 
-      {rounds.map((round) => (
-        <div
-          key={round.id}
-          style={{
-            marginBottom: 40,
-            breakInside: "avoid",
-          }}
-        >
-          <h3
+      {rounds.map((roundGroup) => {
+        const courts = groupByCourt(
+          roundGroup.matches
+        );
+
+        return (
+          <div
+            key={roundGroup.key}
             style={{
-              borderBottom: "2px solid #334155",
-              paddingBottom: 10,
-              marginBottom: 20,
-              color: "#60a5fa",
+              marginBottom: 45,
+              breakInside: "avoid",
             }}
           >
-            {round.name}
-          </h3>
+            <h3
+              style={{
+                borderBottom: "2px solid #334155",
+                paddingBottom: 10,
+                marginBottom: 20,
+                color: "#60a5fa",
+                fontSize: 24,
+              }}
+            >
+              {roundGroup.name}
+            </h3>
 
-          {round.matches.map((match) => (
-            <MatchCard
-              key={match.id}
-              match={match}
-            />
-          ))}
-        </div>
-      ))}
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: `repeat(${courts.length}, minmax(330px, 1fr))`,
+                gap: 22,
+                alignItems: "start",
+                overflowX: "auto",
+              }}
+            >
+              {courts.map((courtGroup) => (
+                <div
+                  key={courtGroup.court}
+                  style={{
+                    background: "#0f172a",
+                    border: "1px solid #334155",
+                    borderRadius: 14,
+                    padding: 16,
+                  }}
+                >
+                  <h4
+                    style={{
+                      marginTop: 0,
+                      marginBottom: 16,
+                      color: "#f8fafc",
+                      textAlign: "center",
+                      fontSize: 22,
+                      borderBottom: "1px solid #334155",
+                      paddingBottom: 12,
+                    }}
+                  >
+                    🏟 Cancha {courtGroup.court}
+                  </h4>
+
+                  {courtGroup.matches.map((match, index) => (
+                    <MatchCard
+                      key={match.id}
+                      match={match}
+                      displayLabel={`Partido ${index + 1}`}
+                    />
+                  ))}
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
