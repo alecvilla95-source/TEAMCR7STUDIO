@@ -5,6 +5,7 @@ import type { TournamentBracket } from "../types/tournamentBracket";
 import { calculateByes } from "./calculateByes";
 import { generateFixture } from "./fixtureEngine";
 import { linkMatches } from "./linkMatches";
+import { placeByes } from "./placeByes";
 import { scheduleMatches } from "./scheduleEngine";
 
 export function buildTournament(
@@ -12,18 +13,22 @@ export function buildTournament(
   teams: Team[]
 ): TournamentBracket {
 
-  const {
-    playingTeams,
-    byeTeams,
-  } = calculateByes(
-    teams,
-    tournament.teams
+  const prepared = calculateByes(teams);
+
+  let matches = generateFixture(
+    prepared.playingTeams,
+    prepared.firstRoundMatches
   );
 
-  const matches = scheduleMatches(
-    linkMatches(
-      generateFixture(playingTeams)
-    ),
+  matches = linkMatches(matches);
+
+  matches = placeByes(
+    matches,
+    prepared.byeTeams
+  );
+
+  matches = scheduleMatches(
+    matches,
     tournament.courts,
     tournament.startTime,
     tournament.duration
@@ -31,7 +36,7 @@ export function buildTournament(
 
   return {
     matches,
-    byeTeams,
+    byeTeams: prepared.byeTeams,
   };
 
 }

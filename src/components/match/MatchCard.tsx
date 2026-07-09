@@ -5,19 +5,30 @@ interface Props {
 }
 
 export default function MatchCard({ match }: Props) {
-  function teamLabel(team: typeof match.teamA, slot: "A" | "B") {
-    if (team) return team.name;
+
+  function teamLabel(
+    team: typeof match.teamA,
+    sourceMatch: number | null | undefined
+  ) {
+
+    if (team) {
+      return team.name;
+    }
 
     if (match.round === 1) {
       return "Por definir";
     }
 
-    return slot === "A"
-      ? "⏳ Ganador del partido anterior"
-      : "⏳ Ganador del partido anterior";
+    if (sourceMatch) {
+      return `🏆 Ganador Partido ${sourceMatch}`;
+    }
+
+    return "Por definir";
+
   }
 
   return (
+
     <div
       style={{
         background: "#1e293b",
@@ -30,6 +41,7 @@ export default function MatchCard({ match }: Props) {
             : "1px solid #334155",
       }}
     >
+
       <div
         style={{
           display: "flex",
@@ -39,7 +51,9 @@ export default function MatchCard({ match }: Props) {
           fontSize: 14,
         }}
       >
-        <span>Partido {match.id}</span>
+        <span>
+          Partido {match.id}
+        </span>
 
         <span>
           🕒 {match.time || "--:--"} | 🏟 Cancha {match.court || "-"}
@@ -52,7 +66,10 @@ export default function MatchCard({ match }: Props) {
           fontWeight: "bold",
         }}
       >
-        {teamLabel(match.teamA, "A")}
+        {teamLabel(
+          match.teamA,
+          match.sourceMatchA
+        )}
       </div>
 
       <div
@@ -72,10 +89,14 @@ export default function MatchCard({ match }: Props) {
           fontWeight: "bold",
         }}
       >
-        {teamLabel(match.teamB, "B")}
+        {teamLabel(
+          match.teamB,
+          match.sourceMatchB
+        )}
       </div>
 
       {match.status === "FINISHED" && (
+
         <div
           style={{
             marginTop: 15,
@@ -87,9 +108,13 @@ export default function MatchCard({ match }: Props) {
             textAlign: "center",
           }}
         >
-            🏆 Ganador: {match.winner?.name}
+          🏆 Ganador: {match.winner?.name}
         </div>
+
       )}
+
     </div>
+
   );
+
 }

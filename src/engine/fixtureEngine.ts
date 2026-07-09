@@ -6,7 +6,8 @@ function nextPowerOfTwo(value: number): number {
 }
 
 export function generateFixture(
-  teams: Team[]
+  teams: Team[],
+  firstRoundMatches: number
 ): Match[] {
 
   const matches: Match[] = [];
@@ -14,33 +15,33 @@ export function generateFixture(
   let matchId = 1;
 
   // ---------- Primera ronda ----------
-  for (let i = 0; i < teams.length; i += 2) {
+for (let i = 0; i < firstRoundMatches; i++) {
 
-    matches.push({
-      id: matchId++,
-      round: 1,
-      order: i / 2 + 1,
-      court: 0,
-      time: "",
+  matches.push({
+    id: matchId++,
+    round: 1,
+    order: i + 1,
+    court: 0,
+    time: "",
 
-      teamA: teams[i],
-      teamB: teams[i + 1] ?? null,
+    teamA: teams[i * 2],
+    teamB: teams[i * 2 + 1],
 
-      scoreA: 0,
-      scoreB: 0,
+    scoreA: 0,
+    scoreB: 0,
 
-      winner: null,
+    winner: null,
 
-      status: "PENDING",
+    status: "PENDING",
 
-      nextMatchId: null,
-      nextSlot: null,
-    });
+    nextMatchId: null,
+    nextSlot: null,
+  });
 
-  }
+}
 
   // Cantidad de partidos de la primera ronda
-  let matchesInRound = matches.length;
+  let matchesInRound = firstRoundMatches;
 
   let round = 2;
 

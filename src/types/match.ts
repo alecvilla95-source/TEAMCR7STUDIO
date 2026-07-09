@@ -33,4 +33,10 @@ export interface Match {
 
   nextSlot: "A" | "B" | null;
 
+  // NUEVO
+  sourceMatchA?: number | null;
+
+  // NUEVO
+  sourceMatchB?: number | null;
+
 }

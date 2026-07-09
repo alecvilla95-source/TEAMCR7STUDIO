@@ -62,33 +62,47 @@ export default function TeamRegistration() {
   }
 
   function generateTournament() {
-    if (!tournament) return;
+    try {
+      console.log("1. Entró a generateTournament");
 
-    // Solo conservar equipos con nombre
-    const validNames = teamNames
-      .map((team) => team.trim())
-      .filter((team) => team !== "");
+      if (!tournament) return;
 
-    if (validNames.length < 2) {
-      alert("Debe registrar al menos 2 equipos.");
-      return;
+      const validNames = teamNames
+        .map((team) => team.trim())
+        .filter((team) => team !== "");
+
+      if (validNames.length < 2) {
+        alert("Debe registrar al menos 2 equipos.");
+        return;
+      }
+
+      const teams: Team[] = validNames.map((name, index) => ({
+        id: index + 1,
+        name,
+      }));
+
+      setTeams(teams);
+
+      console.log("2. Antes de buildTournament");
+
+      const tournamentBracket = buildTournament(
+        tournament,
+        teams
+      );
+
+      console.log("3. Resultado", tournamentBracket);
+
+      setFixture(tournamentBracket.matches);
+
+      console.log("4. Fixture guardado");
+
+      setPage("fixture");
+
+      console.log("5. Página cambiada");
+    } catch (error) {
+      console.error("ERROR GENERANDO TORNEO", error);
+      alert("Revisa la consola (F12). Ocurrió un error.");
     }
-
-    const teams: Team[] = validNames.map((name, index) => ({
-      id: index + 1,
-      name,
-    }));
-
-    setTeams(teams);
-
-    const fixture = buildTournament(
-      tournament,
-      teams
-    );
-
-    setFixture(fixture);
-
-    setPage("fixture");
   }
 
   const columns =
@@ -102,7 +116,6 @@ export default function TeamRegistration() {
 
   return (
     <div>
-
       <h2>Registro de Equipos</h2>
 
       <p
@@ -211,7 +224,6 @@ export default function TeamRegistration() {
           ⚽ GENERAR FIXTURE
         </button>
       </div>
-
     </div>
   );
 }
