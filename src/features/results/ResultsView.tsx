@@ -6,7 +6,10 @@ import {
 
 import type { Match } from "../../types/match";
 import type { Player } from "../../types/player";
-import type { TeamCategory } from "../../types/team";
+import type {
+  Team,
+  TeamCategory,
+} from "../../types/team";
 import type { GoalScorerRecord } from "../../types/goal";
 
 import { useFixture } from "../../store/fixtureStore";
@@ -862,10 +865,10 @@ export default function ResultsView() {
               <div
                 style={{
                   display: "grid",
-                  gridTemplateColumns: `repeat(${venues.length}, minmax(340px, 1fr))`,
+                  gridTemplateColumns: `repeat(${venues.length}, minmax(360px, 1fr))`,
                   minWidth:
                     venues.length > 3
-                      ? venues.length * 360
+                      ? venues.length * 380
                       : undefined,
                   gap: 22,
                   alignItems: "start",
@@ -1042,6 +1045,7 @@ function ResultCard({
       </div>
 
       <TeamScoreRow
+        team={match.teamA}
         name={
           match.teamA?.name ??
           (
@@ -1077,6 +1081,7 @@ function ResultCard({
       <div style={vsText}>VS</div>
 
       <TeamScoreRow
+        team={match.teamB}
         name={
           match.teamB?.name ??
           (
@@ -1182,12 +1187,14 @@ function ResultCard({
 }
 
 function TeamScoreRow({
+  team,
   name,
   value,
   onChange,
   onMinus,
   onPlus,
 }: {
+  team: Team | null;
   name: string;
   value: number;
   onChange: (value: number) => void;
@@ -1196,8 +1203,12 @@ function TeamScoreRow({
 }) {
   return (
     <div style={teamRow}>
-      <div style={teamName}>
-        {name}
+      <div style={teamIdentity}>
+        <TeamMiniLogo team={team} />
+
+        <div style={teamName}>
+          {name}
+        </div>
       </div>
 
       <div style={scoreControls}>
@@ -1228,6 +1239,28 @@ function TeamScoreRow({
         </button>
       </div>
     </div>
+  );
+}
+
+function TeamMiniLogo({
+  team,
+}: {
+  team: Team | null;
+}) {
+  if (!team?.logoDataUrl) {
+    return (
+      <div style={teamMiniLogoEmpty}>
+        ⚽
+      </div>
+    );
+  }
+
+  return (
+    <img
+      src={team.logoDataUrl}
+      alt={team.name}
+      style={teamMiniLogo}
+    />
   );
 }
 
@@ -1397,17 +1430,25 @@ function GoalScorersModal({
         </div>
 
         <div style={scoreSummary}>
-          <strong>
-            {match.teamA?.name ?? "Equipo A"}
-          </strong>
+          <div style={modalTeamSide}>
+            <TeamMiniLogo team={match.teamA} />
+
+            <strong>
+              {match.teamA?.name ?? "Equipo A"}
+            </strong>
+          </div>
 
           <span>
             {match.scoreA} - {match.scoreB}
           </span>
 
-          <strong>
-            {match.teamB?.name ?? "Equipo B"}
-          </strong>
+          <div style={modalTeamSide}>
+            <TeamMiniLogo team={match.teamB} />
+
+            <strong>
+              {match.teamB?.name ?? "Equipo B"}
+            </strong>
+          </div>
         </div>
 
         <div style={goalGrid}>
@@ -1856,9 +1897,40 @@ const teamRow: CSSProperties = {
   marginTop: 10,
 };
 
+const teamIdentity: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: 12,
+  minWidth: 0,
+};
+
+const teamMiniLogo: CSSProperties = {
+  width: 46,
+  height: 46,
+  objectFit: "contain",
+  background: "#0f172a",
+  border: "1px solid #334155",
+  borderRadius: 10,
+  padding: 4,
+  flexShrink: 0,
+};
+
+const teamMiniLogoEmpty: CSSProperties = {
+  width: 46,
+  height: 46,
+  background: "#0f172a",
+  border: "1px solid #334155",
+  borderRadius: 10,
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  flexShrink: 0,
+};
+
 const teamName: CSSProperties = {
   fontSize: 17,
   fontWeight: "bold",
+  wordBreak: "break-word",
 };
 
 const scoreControls: CSSProperties = {
@@ -2035,6 +2107,13 @@ const scoreSummary: CSSProperties = {
   padding: 16,
   marginBottom: 20,
   fontSize: 20,
+};
+
+const modalTeamSide: CSSProperties = {
+  display: "flex",
+  justifyContent: "center",
+  alignItems: "center",
+  gap: 10,
 };
 
 const goalGrid: CSSProperties = {
