@@ -89,16 +89,38 @@ function readStoredOverlayMode(): OverlayMode {
   return "SINGLE";
 }
 
+function getWomenFieldLetter(index: number) {
+  const letters = ["A", "B", "C", "D"];
+
+  return letters[index - 1] ?? String(index);
+}
+
+function replaceOldCourtText(label: string) {
+  return label
+    .replaceAll("C. Mujer 1", "Campo A")
+    .replaceAll("C. Mujer 2", "Campo B")
+    .replaceAll("C. Mujer 3", "Campo C")
+    .replaceAll("C. Mujer 4", "Campo D")
+    .replaceAll("Cancha 1", "Campo 1")
+    .replaceAll("Cancha 2", "Campo 2")
+    .replaceAll("Cancha 3", "Campo 3")
+    .replaceAll("Cancha 4", "Campo 4")
+    .replaceAll("cancha", "campo")
+    .replaceAll("Cancha", "Campo")
+    .replaceAll("canchas", "campos")
+    .replaceAll("Canchas", "Campos");
+}
+
 function getCourtLabel(match: Match) {
   if (match.courtLabel) {
-    return match.courtLabel;
+    return replaceOldCourtText(match.courtLabel);
   }
 
   if (match.category === "WOMEN") {
-    return `C. Mujer ${match.court || "-"}`;
+    return `Campo ${getWomenFieldLetter(match.court || 1)}`;
   }
 
-  return `Cancha ${match.court || "-"}`;
+  return `Campo ${match.court || "-"}`;
 }
 
 function getTimeKey(match: Match) {
@@ -119,7 +141,7 @@ function getStageText(match: Match) {
   if (match.stage === "GROUP") return "GRUPOS";
 
   if (
-    (match.courtLabel ?? "")
+    getCourtLabel(match)
       .toUpperCase()
       .includes("FINAL")
   ) {
@@ -848,7 +870,7 @@ function MultiCourtOverlay({
 
           <p style={multiSubtitleStyle}>
             Horario: <strong>{selectedMatch.time || "--:--"}</strong> |{" "}
-            {matches.length} cancha(s) jugando al mismo tiempo
+            {matches.length} campo(s) jugando al mismo tiempo
           </p>
         </div>
 
@@ -884,7 +906,7 @@ function MultiCourtOverlay({
       <section style={multiBottomBarStyle}>
         <InfoItem
           icon="⚡"
-          title="MODO MULTICANCHA"
+          title="MODO MULTICAMPO"
           subtitle="Todos los partidos del mismo horario"
         />
 
@@ -1336,7 +1358,7 @@ function getLastFinalWinner(fixture: Match[]) {
   const finalMatch = [...fixture]
     .reverse()
     .find((match) => {
-      const label = `${match.courtLabel ?? ""} ${match.round ?? ""}`.toUpperCase();
+      const label = `${getCourtLabel(match)} ${match.round ?? ""}`.toUpperCase();
 
       return (
         match.status === "FINISHED" &&
@@ -1577,7 +1599,7 @@ function BracketOverlay({
           </h1>
 
           <p style={bracketSubtitleStyle}>
-            Cancha 1 avanza de izquierda a derecha · Cancha 2 avanza de derecha a izquierda · La final se junta al centro
+            Campo 1 avanza de izquierda a derecha · Campo 2 avanza de derecha a izquierda · La final se junta al centro
           </p>
         </div>
 
@@ -1701,7 +1723,7 @@ function BracketCategory({
         <>
           <div style={mirrorBracketStageStyle}>
             <MirrorBracketSide
-              label={leftGroup?.label ?? "Cancha 1"}
+              label={leftGroup?.label ?? "Campo 1"}
               matches={leftGroup?.matches ?? []}
               color={color}
               teamMap={teamMap}
@@ -1717,7 +1739,7 @@ function BracketCategory({
             />
 
             <MirrorBracketSide
-              label={rightGroup?.label ?? "Cancha 2"}
+              label={rightGroup?.label ?? "Campo 2"}
               matches={rightGroup?.matches ?? []}
               color={color}
               teamMap={teamMap}
@@ -1728,7 +1750,7 @@ function BracketCategory({
           {extraGroups.length > 0 && (
             <div style={extraCourtsBoxStyle}>
               <div style={extraCourtsTitleStyle}>
-                Otras canchas
+                Otros campos
               </div>
 
               <div style={extraCourtsGridStyle}>
@@ -1798,7 +1820,7 @@ function MirrorBracketSide({
 
       {rounds.length === 0 ? (
         <div style={bracketEmptyStyle}>
-          Todavía no hay partidos en esta cancha.
+          Todavía no hay partidos en esta campo.
         </div>
       ) : (
         <div
@@ -1879,18 +1901,18 @@ function BracketFinalCenter({
         teamA,
         finalMatch.sourceMatchA
           ? `Ganador P${finalMatch.sourceMatchA}`
-          : "Finalista Cancha 1"
+          : "Finalista Campo 1"
       )
-    : teamA?.name ?? "Finalista Cancha 1";
+    : teamA?.name ?? "Finalista Campo 1";
 
   const teamBName = finalMatch
     ? getTeamName(
         teamB,
         finalMatch.sourceMatchB
           ? `Ganador P${finalMatch.sourceMatchB}`
-          : "Finalista Cancha 2"
+          : "Finalista Campo 2"
       )
-    : teamB?.name ?? "Finalista Cancha 2";
+    : teamB?.name ?? "Finalista Campo 2";
 
   return (
     <section
@@ -1957,7 +1979,7 @@ function getBracketFinalMatch(matches: Match[]) {
   );
 
   const explicitFinal = knockoutMatches.find((match) =>
-    (match.courtLabel ?? "")
+    getCourtLabel(match)
       .toUpperCase()
       .includes("FINAL")
   );
@@ -2029,11 +2051,15 @@ function getBracketCourtGroups(matches: Match[]) {
 }
 
 function getBracketCourtOrder(label: string, matches: Match[]) {
-  const normalized = label.toUpperCase();
+  const courtNumber =
+    matches[0]?.court ??
+    Number(label.match(/\d+/)?.[0] ?? 0);
 
-  const courtNumber = matches[0]?.court ?? Number(label.match(/\d+/)?.[0] ?? 0);
+  const isWomen = matches.some(
+    (match) => match.category === "WOMEN"
+  );
 
-  if (normalized.includes("MUJER")) {
+  if (isWomen) {
     return 40 + courtNumber;
   }
 
@@ -2083,7 +2109,8 @@ function getBracketRoundTitle(
   const firstMatch = matches[0];
 
   if (
-    (firstMatch?.courtLabel ?? "")
+    firstMatch &&
+    getCourtLabel(firstMatch)
       .toUpperCase()
       .includes("FINAL")
   ) {
@@ -2411,7 +2438,7 @@ function ControlPanel({
                       : grayButtonStyle
                   }
                 >
-                  Multicancha
+                  Multicampo
                 </button>
 
                 <button
@@ -2581,7 +2608,7 @@ function ControlPanel({
               </div>
 
               <div style={simultaneousBadgeStyle}>
-                {controlledMatches.length} cancha(s)
+                {controlledMatches.length} campo(s)
               </div>
             </div>
 
@@ -3602,7 +3629,7 @@ const sponsorTextStyle: CSSProperties = {
   lineHeight: 1.05,
 };
 
-/* ===================== MULTICANCHA ===================== */
+/* ===================== MULTICAMPO ===================== */
 
 const multiTitleBoxStyle: CSSProperties = {
   margin: "42px auto 24px",
