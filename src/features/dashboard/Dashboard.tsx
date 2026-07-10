@@ -41,16 +41,6 @@ function getCategoryLabel(
   return "GENERAL";
 }
 
-function getCategoryColor(
-  category: DashboardCategory
-) {
-  if (category === "WOMEN") return "#f9a8d4";
-
-  if (category === "MEN") return "#93c5fd";
-
-  return "#facc15";
-}
-
 function getCourtLabel(team: Team) {
   if (team.category === "WOMEN") {
     return `C. Mujer ${team.assignedCourt ?? "-"}`;
@@ -373,7 +363,7 @@ export default function DashboardView() {
           <div style={sectionBox}>
             <SectionTitle
               title="🏟 Equipos por cancha"
-              subtitle="Distribución visual de equipos"
+              subtitle="Distribución visual de equipos en columnas"
             />
 
             <CourtTeamsPanel
@@ -726,13 +716,16 @@ function CourtTeamsPanel({
                   <div
                     key={team.id}
                     style={courtTeamRow}
+                    title={team.name}
                   >
                     <TeamLogo
                       team={team}
-                      size={34}
+                      size={28}
                     />
 
-                    <span>{team.name}</span>
+                    <span style={courtTeamName}>
+                      {team.name}
+                    </span>
                   </div>
                 ))}
               </div>
@@ -828,7 +821,7 @@ const statValue: CSSProperties = {
 
 const mainGrid: CSSProperties = {
   display: "grid",
-  gridTemplateColumns: "1.25fr 0.75fr",
+  gridTemplateColumns: "1.15fr 0.85fr",
   gap: 22,
   alignItems: "start",
 };
@@ -1024,6 +1017,8 @@ const matchStatus: CSSProperties = {
 
 const courtGrid: CSSProperties = {
   display: "grid",
+  gridTemplateColumns:
+    "repeat(auto-fit, minmax(260px, 1fr))",
   gap: 12,
 };
 
@@ -1036,17 +1031,29 @@ const courtCard: CSSProperties = {
 
 const courtTeamList: CSSProperties = {
   display: "grid",
+  gridTemplateColumns:
+    "repeat(auto-fit, minmax(125px, 1fr))",
   gap: 8,
 };
 
 const courtTeamRow: CSSProperties = {
   display: "flex",
   alignItems: "center",
-  gap: 9,
+  gap: 8,
   background: "#020617",
   border: "1px solid #334155",
   borderRadius: 10,
-  padding: 8,
+  padding: "6px 8px",
+  minWidth: 0,
+  overflow: "hidden",
+};
+
+const courtTeamName: CSSProperties = {
+  fontSize: 12,
+  fontWeight: 700,
+  overflow: "hidden",
+  whiteSpace: "nowrap",
+  textOverflow: "ellipsis",
 };
 
 const emptyBox: CSSProperties = {
