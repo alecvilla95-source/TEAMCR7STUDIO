@@ -9,6 +9,7 @@ export type Page =
   | "dashboard"
   | "tournament"
   | "teams"
+  | "players"
   | "fixture"
   | "results"
   | "overlay"
@@ -16,6 +17,7 @@ export type Page =
 
 interface AppContextType {
   page: Page;
+
   setPage: (page: Page) => void;
 }
 
@@ -23,6 +25,7 @@ const validPages: Page[] = [
   "dashboard",
   "tournament",
   "teams",
+  "players",
   "fixture",
   "results",
   "overlay",
@@ -30,22 +33,28 @@ const validPages: Page[] = [
 ];
 
 function getInitialPage(): Page {
-  const params = new URLSearchParams(
-    window.location.search
-  );
+  const params =
+    new URLSearchParams(
+      window.location.search
+    );
 
-  const page = params.get("page") as Page | null;
+  const page =
+    params.get("page") as Page | null;
 
-  if (page && validPages.includes(page)) {
+  if (
+    page &&
+    validPages.includes(page)
+  ) {
     return page;
   }
 
   return "dashboard";
 }
 
-const AppContext = createContext<AppContextType>(
-  {} as AppContextType
-);
+const AppContext =
+  createContext<AppContextType>(
+    {} as AppContextType
+  );
 
 export function AppProvider({
   children,
@@ -55,22 +64,10 @@ export function AppProvider({
   const [page, setPageState] =
     useState<Page>(getInitialPage);
 
-  function setPage(page: Page) {
-    setPageState(page);
-
-    const url = new URL(window.location.href);
-
-    if (page === "dashboard") {
-      url.searchParams.delete("page");
-    } else {
-      url.searchParams.set("page", page);
-    }
-
-    window.history.pushState(
-      {},
-      "",
-      url.toString()
-    );
+  function setPage(
+    nextPage: Page
+  ) {
+    setPageState(nextPage);
   }
 
   return (

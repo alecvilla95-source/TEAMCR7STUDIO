@@ -10,8 +10,26 @@ import { useFixture } from "../../store/fixtureStore";
 import { useChampion } from "../../store/championStore";
 import { useOverlay } from "../../store/overlayStore";
 import { useTimer } from "../../store/timerStore";
+import { usePlayers } from "../../store/playerStore";
+import { useGoals } from "../../store/goalStore";
 
-import type { TournamentMode } from "../../types/tournament";
+import type {
+  TournamentMode,
+  TournamentCourtMode,
+  TournamentBreaks,
+} from "../../types/tournament";
+
+const breakOptions = [
+  0,
+  3,
+  5,
+  10,
+  15,
+  20,
+  30,
+  45,
+  60,
+];
 
 export default function TournamentForm() {
   const { setPage } = useApp();
@@ -28,14 +46,24 @@ export default function TournamentForm() {
 
   const { resetTimer } = useTimer();
 
+  const { clearPlayers } = usePlayers();
+
+  const { clearGoals } = useGoals();
+
   const [name, setName] = useState("");
 
   const [mode, setMode] =
     useState<TournamentMode>("ELIMINATION");
 
+  const [courtMode, setCourtMode] =
+    useState<TournamentCourtMode>("SHARED");
+
   const [teams, setTeamsCount] = useState(16);
 
-  const [courts, setCourts] = useState(1);
+  const [courts, setCourts] = useState(2);
+
+  const [womenCourts, setWomenCourts] =
+    useState(0);
 
   const [startTime, setStartTime] =
     useState("09:00");
@@ -43,19 +71,64 @@ export default function TournamentForm() {
   const [duration, setDuration] =
     useState(20);
 
+  const [defaultBreak, setDefaultBreak] =
+    useState(10);
+
+  const [groupBreak, setGroupBreak] =
+    useState(10);
+
+  const [quarterBreak, setQuarterBreak] =
+    useState(15);
+
+  const [semifinalBreak, setSemifinalBreak] =
+    useState(20);
+
+  const [finalBreak, setFinalBreak] =
+    useState(30);
+
+  const totalCourts =
+    courts + womenCourts;
+
   function create() {
     if (!name.trim()) {
       alert("Ingrese el nombre del campeonato.");
       return;
     }
 
+    if (totalCourts <= 0) {
+      alert(
+        "Debes seleccionar al menos un campo: varones o mujeres."
+      );
+      return;
+    }
+
+    if (duration <= 0) {
+      alert("La duración del partido debe ser mayor a 0.");
+      return;
+    }
+
+    const breaks: TournamentBreaks = {
+      default: defaultBreak,
+      group: groupBreak,
+      quarterFinal: quarterBreak,
+      semifinal: semifinalBreak,
+      final: finalBreak,
+    };
+
     createTournament({
       name,
       mode,
+      courtMode:
+        mode === "ELIMINATION" &&
+        totalCourts > 1
+          ? courtMode
+          : "SHARED",
       teams,
       courts,
+      womenCourts,
       startTime,
       duration,
+      breaks,
     });
 
     setTeams([]);
@@ -66,13 +139,17 @@ export default function TournamentForm() {
 
     setActiveMatchId(null);
 
+    clearPlayers();
+
+    clearGoals();
+
     resetTimer(duration * 60);
 
     setPage("teams");
   }
 
   return (
-    <div style={{ maxWidth: 700 }}>
+    <div style={{ maxWidth: 850 }}>
       <h2>Nuevo Campeonato</h2>
 
       <p
@@ -82,8 +159,8 @@ export default function TournamentForm() {
           marginBottom: 30,
         }}
       >
-        Al crear un nuevo campeonato se limpiarán los equipos,
-        fixture, resultados, campeón, OBS y cronómetro anteriores.
+        Define modalidad, campos de varones, campos de mujeres,
+        duración y descansos.
       </p>
 
       <div
@@ -122,7 +199,7 @@ export default function TournamentForm() {
           </option>
         </select>
 
-        <label>Cantidad de Plazas</label>
+        <label>Cantidad de Plazas por Categoría</label>
 
         <select
           value={teams}
@@ -136,22 +213,129 @@ export default function TournamentForm() {
           <option value={16}>16 Plazas</option>
           <option value={32}>32 Plazas</option>
           <option value={64}>64 Plazas</option>
+          <option value={128}>128 Plazas</option>
         </select>
 
-        <label>Cantidad de Canchas</label>
+        <div style={sectionBox}>
+          <h3
+            style={{
+              marginTop: 0,
+            }}
+          >
+            🏟 Campos del campeonato
+          </h3>
 
-        <select
-          value={courts}
-          onChange={(e) =>
-            setCourts(Number(e.target.value))
-          }
-          style={inputStyle}
-        >
-          <option value={1}>1 Cancha</option>
-          <option value={2}>2 Canchas</option>
-          <option value={3}>3 Canchas</option>
-          <option value={4}>4 Canchas</option>
-        </select>
+          <p
+            style={{
+              color: "#94a3b8",
+            }}
+          >
+            Puedes organizar varones y mujeres dentro del mismo campeonato,
+            pero con llaves separadas. Puedes dejar una categoría sin campo
+            si ese campeonato solo tendrá la otra categoría.
+          </p>
+
+          <label>Campos Varones</label>
+
+          <select
+            value={courts}
+            onChange={(e) =>
+              setCourts(Number(e.target.value))
+            }
+            style={inputStyle}
+          >
+            <option value={0}>Sin Campos Varones</option>
+            <option value={1}>Campo 1</option>
+            <option value={2}>Campo 1 y 2</option>
+            <option value={3}>Campo 1, 2 y 3</option>
+            <option value={4}>Campo 1, 2, 3 y 4</option>
+          </select>
+
+          <label
+            style={{
+              marginTop: 12,
+            }}
+          >
+            Campos Mujeres
+          </label>
+
+          <select
+            value={womenCourts}
+            onChange={(e) =>
+              setWomenCourts(Number(e.target.value))
+            }
+            style={inputStyle}
+          >
+            <option value={0}>Sin Campos Mujeres</option>
+            <option value={1}>Campo A</option>
+            <option value={2}>Campo A y B</option>
+            <option value={3}>Campo A, B y C</option>
+            <option value={4}>Campo A, B, C y D</option>
+          </select>
+
+          <div
+            style={{
+              marginTop: 12,
+              background:
+                totalCourts > 0
+                  ? "#052e16"
+                  : "#7f1d1d",
+              border:
+                totalCourts > 0
+                  ? "1px solid #16a34a"
+                  : "1px solid #ef4444",
+              color:
+                totalCourts > 0
+                  ? "#bbf7d0"
+                  : "#fecaca",
+              borderRadius: 10,
+              padding: 12,
+              fontWeight: 800,
+            }}
+          >
+            Total de campos activos: {totalCourts}
+          </div>
+        </div>
+
+        {mode === "ELIMINATION" && totalCourts > 1 && (
+          <div style={sectionBox}>
+            <h3
+              style={{
+                marginTop: 0,
+              }}
+            >
+              ⚽ Sistema relámpago
+            </h3>
+
+            <p
+              style={{
+                color: "#94a3b8",
+              }}
+            >
+              En relámpagos puedes separar los equipos por campo.
+              Cada campo tendrá su propia llave. Los varones sacarán su
+              campeón y las mujeres su campeona.
+            </p>
+
+            <select
+              value={courtMode}
+              onChange={(e) =>
+                setCourtMode(
+                  e.target.value as TournamentCourtMode
+                )
+              }
+              style={inputStyle}
+            >
+              <option value="SHARED">
+                Repartir partidos por horario
+              </option>
+
+              <option value="SEPARATE_BRACKETS">
+                Llaves separadas por campo
+              </option>
+            </select>
+          </div>
+        )}
 
         <label>Hora de Inicio</label>
 
@@ -176,6 +360,55 @@ export default function TournamentForm() {
           style={inputStyle}
         />
 
+        <div style={sectionBox}>
+          <h3
+            style={{
+              marginTop: 0,
+            }}
+          >
+            ⏱ Tiempo de organización / descanso
+          </h3>
+
+          <p
+            style={{
+              color: "#94a3b8",
+            }}
+          >
+            Estos minutos se suman después de cada partido para organizar
+            el siguiente encuentro, descansos, penales o retrasos.
+          </p>
+
+          <BreakSelect
+            label="Fase de grupos"
+            value={groupBreak}
+            onChange={setGroupBreak}
+          />
+
+          <BreakSelect
+            label="Rondas iniciales"
+            value={defaultBreak}
+            onChange={setDefaultBreak}
+          />
+
+          <BreakSelect
+            label="Cuartos de final"
+            value={quarterBreak}
+            onChange={setQuarterBreak}
+          />
+
+          <BreakSelect
+            label="Semifinal"
+            value={semifinalBreak}
+            onChange={setSemifinalBreak}
+          />
+
+          <BreakSelect
+            label="Final"
+            value={finalBreak}
+            onChange={setFinalBreak}
+          />
+        </div>
+
         <button
           onClick={create}
           style={buttonStyle}
@@ -187,6 +420,47 @@ export default function TournamentForm() {
   );
 }
 
+function BreakSelect({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: number;
+  onChange: (value: number) => void;
+}) {
+  return (
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "1fr 180px",
+        gap: 15,
+        alignItems: "center",
+        marginTop: 12,
+      }}
+    >
+      <label>{label}</label>
+
+      <select
+        value={value}
+        onChange={(e) =>
+          onChange(Number(e.target.value))
+        }
+        style={inputStyle}
+      >
+        {breakOptions.map((option) => (
+          <option
+            key={option}
+            value={option}
+          >
+            {option} min
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
 const inputStyle: CSSProperties = {
   padding: 12,
   borderRadius: 8,
@@ -194,6 +468,17 @@ const inputStyle: CSSProperties = {
   background: "#1e293b",
   color: "white",
   fontSize: 16,
+};
+
+const sectionBox: CSSProperties = {
+  background: "#0f172a",
+  border: "1px solid #334155",
+  borderRadius: 12,
+  padding: 20,
+  marginTop: 10,
+  display: "flex",
+  flexDirection: "column",
+  gap: 10,
 };
 
 const buttonStyle: CSSProperties = {

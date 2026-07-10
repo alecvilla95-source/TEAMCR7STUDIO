@@ -1,351 +1,805 @@
-import { useState } from "react";
+import {
+  useMemo,
+  useState,
+  type CSSProperties,
+} from "react";
+
+import type { Match } from "../../types/match";
+import type { Player } from "../../types/player";
+import type {
+  Team,
+  TeamCategory,
+} from "../../types/team";
+import type { GoalScorerRecord } from "../../types/goal";
 
 import { useFixture } from "../../store/fixtureStore";
+import { useTournament } from "../../store/tournamentStore";
+import { useTeams } from "../../store/teamStore";
 import { useChampion } from "../../store/championStore";
 import { useOverlay } from "../../store/overlayStore";
-import { useTimer } from "../../store/timerStore";
-import { useTournament } from "../../store/tournamentStore";
+import { useApp } from "../../store/appStore";
+import { usePlayers } from "../../store/playerStore";
+import { useGoals } from "../../store/goalStore";
 
 import { applyResult } from "../../engine/resultEngine";
+import { exportTopScorersToExcel } from "../../services/goalExcelService";
 
-function formatTime(seconds: number) {
-  const minutes = Math.floor(seconds / 60)
-    .toString()
-    .padStart(2, "0");
+type VenueCategory =
+  | TeamCategory
+  | "GENERAL";
 
-  const secs = (seconds % 60)
-    .toString()
-    .padStart(2, "0");
+interface RoundGroup {
+  key: string;
+  round: number;
+  name: string;
+  matches: Match[];
+}
 
-  return `${minutes}:${secs}`;
+interface VenueGroup {
+  key: string;
+  label: string;
+  category: VenueCategory;
+  court: number;
+  matches: Match[];
+}
+
+interface TopScorerRow {
+  key: string;
+  teamId: number;
+  playerId: string;
+  playerName: string;
+  teamName: string;
+  teamLogoDataUrl?: string;
+  category: TeamCategory;
+  goals: number;
+}
+
+function createId() {
+  if (crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+
+  return `${Date.now()}-${Math.random()}`;
+}
+
+function escapeHtml(value: string) {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+function getWomenFieldLetter(index: number) {
+  const letters = ["A", "B", "C", "D"];
+
+  return letters[index - 1] ?? String(index);
+}
+
+function replaceOldCourtText(label: string) {
+  return label
+    .replaceAll("C. Mujer 1", "Campo A")
+    .replaceAll("C. Mujer 2", "Campo B")
+    .replaceAll("C. Mujer 3", "Campo C")
+    .replaceAll("C. Mujer 4", "Campo D")
+    .replaceAll("Cancha 1", "Campo 1")
+    .replaceAll("Cancha 2", "Campo 2")
+    .replaceAll("Cancha 3", "Campo 3")
+    .replaceAll("Cancha 4", "Campo 4")
+    .replaceAll("cancha", "campo")
+    .replaceAll("Cancha", "Campo")
+    .replaceAll("canchas", "campos")
+    .replaceAll("Canchas", "Campos");
+}
+
+function getFieldLabel(match: Match) {
+  if (match.courtLabel) {
+    return replaceOldCourtText(match.courtLabel);
+  }
+
+  if (match.category === "WOMEN") {
+    return `Campo ${getWomenFieldLetter(match.court || 1)}`;
+  }
+
+  return `Campo ${match.court || 1}`;
+}
+
+function getDisplayMatch(match: Match): Match {
+  return {
+    ...match,
+    courtLabel: getFieldLabel(match),
+  };
+}
+
+function getCategoryLabel(
+  category: VenueCategory
+) {
+  if (category === "MEN") return "VARONES";
+
+  if (category === "WOMEN") return "MUJERES";
+
+  return "GENERAL";
+}
+
+function getCategoryColor(
+  category: VenueCategory
+) {
+  if (category === "WOMEN") return "#f9a8d4";
+
+  if (category === "MEN") return "#93c5fd";
+
+  return "#facc15";
+}
+
+function getGoalCategoryTitle(
+  category: TeamCategory
+) {
+  if (category === "WOMEN") {
+    return "🏆 Goleadoras Mujeres";
+  }
+
+  return "🏆 Goleadores Varones";
+}
+
+function getRoundTitle(
+  matches: Match[],
+  round: number
+) {
+  const first = matches[0];
+
+  if (first?.groupName) {
+    return first.groupName;
+  }
+
+  const hasFinal = matches.some((match) =>
+    getFieldLabel(match)
+      .toUpperCase()
+      .includes("FINAL")
+  );
+
+  if (hasFinal) {
+    return "FINALES";
+  }
+
+  return `RONDA ${round}`;
+}
+
+function groupByRound(
+  matches: Match[]
+): RoundGroup[] {
+  const map = new Map<string, Match[]>();
+
+  matches.forEach((match) => {
+    const key =
+      match.groupName ??
+      `ROUND_${match.round}`;
+
+    if (!map.has(key)) {
+      map.set(key, []);
+    }
+
+    map.get(key)!.push(match);
+  });
+
+  return Array.from(map.entries())
+    .map(([key, list]) => {
+      const sorted = [...list].sort((a, b) => {
+        if (a.round !== b.round) {
+          return a.round - b.round;
+        }
+
+        if (a.order !== b.order) {
+          return a.order - b.order;
+        }
+
+        return a.court - b.court;
+      });
+
+      const round =
+        sorted[0]?.round ?? 1;
+
+      return {
+        key,
+        round,
+        name: getRoundTitle(
+          sorted,
+          round
+        ),
+        matches: sorted,
+      };
+    })
+    .sort((a, b) => a.round - b.round);
+}
+
+function groupByVenue(
+  matches: Match[]
+): VenueGroup[] {
+  const map = new Map<string, VenueGroup>();
+
+  matches.forEach((match) => {
+    const label = getFieldLabel(match);
+
+    const category: VenueCategory =
+      match.category ?? "GENERAL";
+
+    const key =
+      `${category}_${label}`;
+
+    if (!map.has(key)) {
+      map.set(key, {
+        key,
+        label,
+        category,
+        court: match.court || 1,
+        matches: [],
+      });
+    }
+
+    map.get(key)!.matches.push(match);
+  });
+
+  const order: Record<VenueCategory, number> = {
+    MEN: 1,
+    WOMEN: 2,
+    GENERAL: 3,
+  };
+
+  return Array.from(map.values())
+    .map((venue) => ({
+      ...venue,
+      matches: [...venue.matches].sort((a, b) => {
+        if (a.time !== b.time) {
+          return a.time.localeCompare(b.time);
+        }
+
+        return a.order - b.order;
+      }),
+    }))
+    .sort((a, b) => {
+      if (order[a.category] !== order[b.category]) {
+        return order[a.category] - order[b.category];
+      }
+
+      if (a.court !== b.court) {
+        return a.court - b.court;
+      }
+
+      return a.label.localeCompare(b.label);
+    });
+}
+
+function safeNumber(value: number) {
+  if (Number.isNaN(value)) return 0;
+
+  return Math.max(0, value);
+}
+
+function calculateTopScorers(
+  records: GoalScorerRecord[],
+  teams: Team[]
+): TopScorerRow[] {
+  const teamMap = new Map<number, Team>();
+
+  teams.forEach((team) => {
+    teamMap.set(team.id, team);
+  });
+
+  const map =
+    new Map<string, TopScorerRow>();
+
+  records.forEach((record) => {
+    const key =
+      `${record.category}_${record.teamId}_${record.playerId}`;
+
+    const team =
+      teamMap.get(record.teamId);
+
+    if (!map.has(key)) {
+      map.set(key, {
+        key,
+        teamId: record.teamId,
+        playerId: record.playerId,
+        playerName: record.playerName,
+        teamName: record.teamName,
+        teamLogoDataUrl: team?.logoDataUrl,
+        category: record.category,
+        goals: 0,
+      });
+    }
+
+    const row = map.get(key)!;
+
+    row.goals += record.goals;
+
+    if (!row.teamLogoDataUrl && team?.logoDataUrl) {
+      row.teamLogoDataUrl = team.logoDataUrl;
+    }
+  });
+
+  return Array.from(map.values())
+    .sort((a, b) => {
+      if (b.goals !== a.goals) {
+        return b.goals - a.goals;
+      }
+
+      return a.playerName.localeCompare(
+        b.playerName
+      );
+    });
+}
+
+function renderPrintTeamLogo(row: TopScorerRow) {
+  if (!row.teamLogoDataUrl) {
+    return `
+      <div class="team-logo-empty">
+        ⚽
+      </div>
+    `;
+  }
+
+  return `
+    <img
+      src="${row.teamLogoDataUrl}"
+      class="team-logo-img"
+      alt="${escapeHtml(row.teamName)}"
+    />
+  `;
+}
+
+function buildTopScorersPrintHtml({
+  tournamentName,
+  topScorers,
+  showWomen,
+}: {
+  tournamentName: string;
+  topScorers: TopScorerRow[];
+  showWomen: boolean;
+}) {
+  const menRows = topScorers.filter(
+    (row) => row.category !== "WOMEN"
+  );
+
+  const womenRows = topScorers.filter(
+    (row) => row.category === "WOMEN"
+  );
+
+  function renderRows(rows: TopScorerRow[]) {
+    if (rows.length === 0) {
+      return `
+        <tr>
+          <td colspan="5" class="empty">
+            Sin goles registrados.
+          </td>
+        </tr>
+      `;
+    }
+
+    return rows
+      .map(
+        (row, index) => `
+          <tr>
+            <td class="center">${index + 1}</td>
+
+            <td class="center logo-cell">
+              ${renderPrintTeamLogo(row)}
+            </td>
+
+            <td>${escapeHtml(row.playerName)}</td>
+
+            <td>${escapeHtml(row.teamName)}</td>
+
+            <td class="center">
+              <strong>${row.goals}</strong>
+            </td>
+          </tr>
+        `
+      )
+      .join("");
+  }
+
+  function renderTable(
+    title: string,
+    rows: TopScorerRow[]
+  ) {
+    return `
+      <section>
+        <h2>${escapeHtml(title)}</h2>
+
+        <table>
+          <thead>
+            <tr>
+              <th>Pos</th>
+              <th>Logo</th>
+              <th>Jugador/a</th>
+              <th>Equipo</th>
+              <th>Goles</th>
+            </tr>
+          </thead>
+
+          <tbody>
+            ${renderRows(rows)}
+          </tbody>
+        </table>
+      </section>
+    `;
+  }
+
+  return `
+    <!doctype html>
+    <html>
+      <head>
+        <meta charset="utf-8" />
+
+        <title>Tabla de Goleadores</title>
+
+        <style>
+          * {
+            box-sizing: border-box;
+          }
+
+          body {
+            font-family: Arial, sans-serif;
+            margin: 30px;
+            color: #111827;
+          }
+
+          .header {
+            border-bottom: 3px solid #111827;
+            padding-bottom: 14px;
+            margin-bottom: 22px;
+          }
+
+          h1 {
+            margin: 0;
+            font-size: 28px;
+          }
+
+          h2 {
+            margin-top: 28px;
+            margin-bottom: 10px;
+            font-size: 22px;
+          }
+
+          .subtitle {
+            margin-top: 8px;
+            color: #374151;
+            font-size: 14px;
+          }
+
+          table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 24px;
+          }
+
+          th,
+          td {
+            border: 1px solid #111827;
+            padding: 8px;
+            text-align: left;
+            font-size: 14px;
+            vertical-align: middle;
+          }
+
+          th {
+            background: #e5e7eb;
+          }
+
+          .center {
+            text-align: center;
+          }
+
+          .logo-cell {
+            width: 60px;
+          }
+
+          .team-logo-img {
+            width: 38px;
+            height: 38px;
+            object-fit: contain;
+            display: block;
+            margin: 0 auto;
+          }
+
+          .team-logo-empty {
+            width: 38px;
+            height: 38px;
+            margin: 0 auto;
+            border: 1px solid #9ca3af;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+          }
+
+          .empty {
+            text-align: center;
+            color: #6b7280;
+            padding: 16px;
+          }
+
+          .footer {
+            margin-top: 35px;
+            font-size: 12px;
+            color: #6b7280;
+            border-top: 1px solid #d1d5db;
+            padding-top: 10px;
+          }
+
+          @media print {
+            body {
+              margin: 18mm;
+            }
+
+            button {
+              display: none;
+            }
+          }
+        </style>
+      </head>
+
+      <body>
+        <div class="header">
+          <h1>⚽ Tabla de Goleadores</h1>
+
+          <div class="subtitle">
+            Campeonato: <strong>${escapeHtml(tournamentName)}</strong>
+          </div>
+
+          <div class="subtitle">
+            Generado: ${escapeHtml(new Date().toLocaleString())}
+          </div>
+        </div>
+
+        ${renderTable("🏆 Goleadores Varones", menRows)}
+
+        ${
+          showWomen
+            ? renderTable("🏆 Goleadoras Mujeres", womenRows)
+            : ""
+        }
+
+        <div class="footer">
+          TEAMCR7STUDIO — Registro oficial de goleadores.
+        </div>
+
+        <script>
+          window.onload = function () {
+            window.focus();
+            setTimeout(function () {
+              window.print();
+            }, 300);
+          };
+        </script>
+      </body>
+    </html>
+  `;
 }
 
 export default function ResultsView() {
   const { fixture, setFixture } = useFixture();
 
-  const { champion, setChampion } = useChampion();
-
-  const { activeMatchId, setActiveMatchId } = useOverlay();
-
-  const {
-    timer,
-    secondsLeft,
-    startTimer,
-    pauseTimer,
-    resetTimer,
-  } = useTimer();
-
   const { tournament } = useTournament();
 
-  const [scores, setScores] = useState<
-    Record<number, { a: number; b: number }>
-  >({});
+  const { teams } = useTeams();
 
-  const [penalties, setPenalties] = useState<
-    Record<number, { a: number; b: number }>
-  >({});
+  const { champions, setChampion } =
+    useChampion();
 
-  const totalMatches = fixture.length;
+  const { setActiveMatchId } = useOverlay();
+
+  const { setPage } = useApp();
+
+  const { getPlayersByTeam } =
+    usePlayers();
+
+  const {
+    goalRecords,
+    getGoalsByMatch,
+    setGoalsForMatch,
+  } = useGoals();
+
+  const [goalMatch, setGoalMatch] =
+    useState<Match | null>(null);
+
+  const rounds = groupByRound(fixture);
+
+  const topScorers =
+    useMemo(
+      () => calculateTopScorers(goalRecords, teams),
+      [goalRecords, teams]
+    );
 
   const finishedMatches = fixture.filter(
     (match) => match.status === "FINISHED"
   ).length;
 
-  const pendingMatches =
-    totalMatches - finishedMatches;
+  function updateMatchNumber(
+    matchId: number,
+    field:
+      | "scoreA"
+      | "scoreB"
+      | "penaltyA"
+      | "penaltyB",
+    value: number
+  ) {
+    const nextFixture = fixture.map((match) => {
+      if (match.id !== matchId) {
+        return match;
+      }
 
-  function exportPDF() {
-    window.print();
+      return {
+        ...match,
+        [field]: safeNumber(value),
+        status:
+          match.status === "FINISHED"
+            ? "FINISHED"
+            : "PLAYING",
+      };
+    });
+
+    setFixture(nextFixture);
   }
 
-  function getScore(
+  function adjustScore(
     matchId: number,
-    team: "a" | "b"
+    field: "scoreA" | "scoreB",
+    amount: number
   ) {
     const match = fixture.find(
       (item) => item.id === matchId
     );
 
-    if (!match) return 0;
+    if (!match) return;
 
-    if (team === "a") {
-      return scores[matchId]?.a ?? match.scoreA;
-    }
-
-    return scores[matchId]?.b ?? match.scoreB;
+    updateMatchNumber(
+      matchId,
+      field,
+      safeNumber(match[field] + amount)
+    );
   }
 
-  function getPenalty(
-    matchId: number,
-    team: "a" | "b"
-  ) {
-    if (team === "a") {
-      return penalties[matchId]?.a ?? 0;
-    }
-
-    return penalties[matchId]?.b ?? 0;
-  }
-
-  function updateScore(
-    matchId: number,
-    team: "a" | "b",
-    value: number
-  ) {
-    const cleanValue = Math.max(
-      0,
-      Number.isNaN(value) ? 0 : value
+  function saveResult(match: Match) {
+    const currentMatch = fixture.find(
+      (item) => item.id === match.id
     );
 
-    setScores((currentScores) => {
-      const match = fixture.find(
-        (item) => item.id === matchId
+    if (!currentMatch) return;
+
+    const isGroupMatch =
+      currentMatch.stage === "GROUP";
+
+    const isTie =
+      currentMatch.scoreA === currentMatch.scoreB;
+
+    const penaltyA =
+      currentMatch.penaltyA;
+
+    const penaltyB =
+      currentMatch.penaltyB;
+
+    if (
+      !isGroupMatch &&
+      isTie &&
+      (
+        penaltyA === undefined ||
+        penaltyB === undefined ||
+        penaltyA === penaltyB
+      )
+    ) {
+      alert(
+        "Debe ingresar penales válidos para definir el ganador."
       );
 
-      const previous = currentScores[matchId] ?? {
-        a: match?.scoreA ?? 0,
-        b: match?.scoreB ?? 0,
-      };
-
-      return {
-        ...currentScores,
-        [matchId]: {
-          ...previous,
-          [team]: cleanValue,
-        },
-      };
-    });
-
-    if (activeMatchId === matchId) {
-      const updatedFixture = fixture.map((match) => {
-        if (match.id !== matchId) return match;
-
-        return {
-          ...match,
-          scoreA:
-            team === "a"
-              ? cleanValue
-              : match.scoreA,
-          scoreB:
-            team === "b"
-              ? cleanValue
-              : match.scoreB,
-        };
-      });
-
-      setFixture(updatedFixture);
-    }
-  }
-
-  function updatePenalty(
-    matchId: number,
-    team: "a" | "b",
-    value: number
-  ) {
-    const cleanValue = Math.max(
-      0,
-      Number.isNaN(value) ? 0 : value
-    );
-
-    setPenalties((currentPenalties) => {
-      const previous = currentPenalties[matchId] ?? {
-        a: 0,
-        b: 0,
-      };
-
-      return {
-        ...currentPenalties,
-        [matchId]: {
-          ...previous,
-          [team]: cleanValue,
-        },
-      };
-    });
-  }
-
-  function addGoal(
-    matchId: number,
-    team: "a" | "b"
-  ) {
-    const current = getScore(
-      matchId,
-      team
-    );
-
-    updateScore(
-      matchId,
-      team,
-      current + 1
-    );
-  }
-
-  function removeGoal(
-    matchId: number,
-    team: "a" | "b"
-  ) {
-    const current = getScore(
-      matchId,
-      team
-    );
-
-    updateScore(
-      matchId,
-      team,
-      Math.max(0, current - 1)
-    );
-  }
-
-  function addPenalty(
-    matchId: number,
-    team: "a" | "b"
-  ) {
-    const current = getPenalty(
-      matchId,
-      team
-    );
-
-    updatePenalty(
-      matchId,
-      team,
-      current + 1
-    );
-  }
-
-  function removePenalty(
-    matchId: number,
-    team: "a" | "b"
-  ) {
-    const current = getPenalty(
-      matchId,
-      team
-    );
-
-    updatePenalty(
-      matchId,
-      team,
-      Math.max(0, current - 1)
-    );
-  }
-
-  function saveResult(matchId: number) {
-    const currentMatch = fixture.find(
-      (match) => match.id === matchId
-    );
-
-    if (!currentMatch) {
-      alert("No se encontró el partido.");
       return;
-    }
-
-    if (!currentMatch.teamA || !currentMatch.teamB) {
-      alert("Este partido aún no está listo.");
-      return;
-    }
-
-    const result = scores[matchId] ?? {
-      a: currentMatch.scoreA,
-      b: currentMatch.scoreB,
-    };
-
-    const penaltyResult =
-      result.a === result.b
-        ? penalties[matchId]
-        : undefined;
-
-    if (result.a === result.b) {
-      if (!penaltyResult) {
-        alert("El partido está empatado. Ingrese los penales.");
-        return;
-      }
-
-      if (penaltyResult.a === penaltyResult.b) {
-        alert("Los penales no pueden quedar empatados.");
-        return;
-      }
     }
 
     try {
-      const updatedMatches = applyResult(
+      const updatedFixture = applyResult(
         fixture,
-        matchId,
-        result.a,
-        result.b,
-        penaltyResult?.a,
-        penaltyResult?.b
+        currentMatch.id,
+        currentMatch.scoreA,
+        currentMatch.scoreB,
+        isGroupMatch ? undefined : penaltyA,
+        isGroupMatch ? undefined : penaltyB
       );
 
-      const finishedMatch = updatedMatches.find(
-        (match) => match.id === matchId
-      );
+      setFixture(updatedFixture);
+
+      const savedMatch =
+        updatedFixture.find(
+          (item) => item.id === currentMatch.id
+        );
 
       if (
-        finishedMatch &&
-        finishedMatch.winner &&
-        !finishedMatch.nextMatchId
+        savedMatch &&
+        savedMatch.stage !== "GROUP" &&
+        !savedMatch.nextMatchId &&
+        savedMatch.winner
       ) {
-        setChampion(finishedMatch.winner);
-        alert(`🏆 Campeón: ${finishedMatch.winner.name}`);
+        const category =
+          savedMatch.category ??
+          savedMatch.winner.category ??
+          "GENERAL";
+
+        setChampion(
+          savedMatch.winner,
+          category
+        );
       }
-
-      pauseTimer();
-
-      if (activeMatchId === matchId) {
-        setActiveMatchId(null);
-      }
-
-      setFixture(updatedMatches);
     } catch (error) {
-      if (error instanceof Error) {
-        alert(error.message);
-      } else {
-        alert("No se pudo guardar el resultado.");
-      }
+      alert(
+        error instanceof Error
+          ? error.message
+          : "No se pudo guardar el resultado."
+      );
     }
   }
 
-  function showInOBS(matchId: number) {
-    setActiveMatchId(matchId);
+  function saveGoalScorers(
+    match: Match,
+    records: GoalScorerRecord[]
+  ) {
+    setGoalsForMatch(
+      match.id,
+      records
+    );
 
-    const duration =
-      (tournament?.duration ?? 20) * 60;
+    setGoalMatch(null);
+  }
 
-    resetTimer(duration);
-
-    const updatedFixture = fixture.map((match) => {
-      if (match.status === "FINISHED") {
-        return match;
-      }
-
-      if (match.id === matchId) {
-        return {
-          ...match,
-          status: "PLAYING" as const,
-        };
-      }
-
-      if (match.status === "PLAYING") {
-        return {
-          ...match,
-          status: "PENDING" as const,
-        };
-      }
-
-      return match;
+  function printTopScorers() {
+    const html = buildTopScorersPrintHtml({
+      tournamentName:
+        tournament?.name ?? "TEAMCR7STUDIO",
+      topScorers,
+      showWomen:
+        (tournament?.womenCourts ?? 0) > 0,
     });
 
-    setFixture(updatedFixture);
+    const printWindow =
+      window.open(
+        "",
+        "_blank",
+        "width=1000,height=800"
+      );
+
+    if (!printWindow) {
+      alert(
+        "No se pudo abrir la ventana de impresión. Revisa si el navegador bloqueó ventanas emergentes."
+      );
+
+      return;
+    }
+
+    printWindow.document.open();
+    printWindow.document.write(html);
+    printWindow.document.close();
+  }
+
+  function exportTopScorersExcel() {
+    exportTopScorersToExcel({
+      tournamentName:
+        tournament?.name ?? "TEAMCR7STUDIO",
+      rows: topScorers,
+      showWomen:
+        (tournament?.womenCourts ?? 0) > 0,
+    });
+  }
+
+  function clearObs() {
+    setActiveMatchId(null);
+  }
+
+  function exportPDF() {
+    window.print();
   }
 
   return (
     <div>
-      <div
-        style={{
-          background: "#1e293b",
-          border: "1px solid #334155",
-          borderRadius: 14,
-          padding: 25,
-          marginBottom: 25,
-        }}
-      >
+      <div style={headerBox}>
         <div
           style={{
             display: "flex",
@@ -362,13 +816,13 @@ export default function ResultsView() {
                 marginBottom: 8,
               }}
             >
-              📊 Resultados
+              📊 Resultados del Campeonato
             </h2>
 
             <h1
               style={{
                 margin: 0,
-                fontSize: 32,
+                fontSize: 34,
               }}
             >
               {tournament?.name ?? "TEAMCR7STUDIO"}
@@ -381,30 +835,52 @@ export default function ResultsView() {
                 marginBottom: 0,
               }}
             >
-              Reporte de resultados del campeonato.
+              Partidos jugados:{" "}
+              <strong>
+                {finishedMatches} / {fixture.length}
+              </strong>
             </p>
           </div>
 
-          <button
-            onClick={exportPDF}
-            style={primaryButton}
+          <div
+            style={{
+              display: "flex",
+              gap: 12,
+              flexWrap: "wrap",
+            }}
           >
-            📄 Exportar PDF
-          </button>
+            <button
+              onClick={() => setPage("fixture")}
+              style={secondaryButton}
+            >
+              📅 Fixture
+            </button>
+
+            <button
+              onClick={clearObs}
+              style={dangerButton}
+            >
+              🧹 Limpiar OBS
+            </button>
+
+            <button
+              onClick={exportPDF}
+              style={primaryButton}
+            >
+              📄 Exportar PDF
+            </button>
+          </div>
         </div>
 
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns:
-              "repeat(auto-fit, minmax(150px, 1fr))",
-            gap: 15,
-            marginTop: 25,
-          }}
-        >
+        <div style={infoGrid}>
+          <InfoBox
+            label="Equipos"
+            value={teams.length}
+          />
+
           <InfoBox
             label="Partidos"
-            value={totalMatches}
+            value={fixture.length}
           />
 
           <InfoBox
@@ -413,484 +889,985 @@ export default function ResultsView() {
           />
 
           <InfoBox
-            label="Pendientes"
-            value={pendingMatches}
-          />
-
-          <InfoBox
-            label="Canchas"
+            label="Campos Varones"
             value={tournament?.courts ?? 0}
           />
 
           <InfoBox
-            label="Duración"
-            value={`${tournament?.duration ?? 0} min`}
+            label="Campos Mujeres"
+            value={tournament?.womenCourts ?? 0}
           />
+        </div>
+
+        <div style={championsBox}>
+          <ChampionCard
+            title="🏆 Campeón Varones"
+            value={champions.MEN?.name ?? "Pendiente"}
+            color="#93c5fd"
+          />
+
+          {(tournament?.womenCourts ?? 0) > 0 && (
+            <ChampionCard
+              title="🏆 Campeona Mujeres"
+              value={champions.WOMEN?.name ?? "Pendiente"}
+              color="#f9a8d4"
+            />
+          )}
+
+          {champions.GENERAL && (
+            <ChampionCard
+              title="🏆 Campeón General"
+              value={champions.GENERAL.name}
+              color="#facc15"
+            />
+          )}
+        </div>
+
+        <TopScorersPanel
+          topScorers={topScorers}
+          showWomen={
+            (tournament?.womenCourts ?? 0) > 0
+          }
+          onPrint={printTopScorers}
+          onExportExcel={exportTopScorersExcel}
+        />
+      </div>
+
+      {fixture.length === 0 && (
+        <div style={emptyBox}>
+          Todavía no hay partidos generados.
+        </div>
+      )}
+
+      {rounds.map((roundGroup) => {
+        const venues =
+          groupByVenue(roundGroup.matches);
+
+        return (
+          <section
+            key={roundGroup.key}
+            style={{
+              marginBottom: 50,
+              breakInside: "avoid",
+            }}
+          >
+            <h2
+              style={{
+                color: "#60a5fa",
+                fontSize: 26,
+                borderBottom: "3px solid #334155",
+                paddingBottom: 12,
+                marginBottom: 25,
+              }}
+            >
+              {roundGroup.name}
+            </h2>
+
+            <div
+              style={{
+                overflowX: "auto",
+                paddingBottom: 12,
+              }}
+            >
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: `repeat(${venues.length}, minmax(360px, 1fr))`,
+                  minWidth:
+                    venues.length > 3
+                      ? venues.length * 380
+                      : undefined,
+                  gap: 22,
+                  alignItems: "start",
+                }}
+              >
+                {venues.map((venue) => (
+                  <div
+                    key={venue.key}
+                    style={{
+                      background: "#0f172a",
+                      border: `1px solid ${getCategoryColor(
+                        venue.category
+                      )}`,
+                      borderRadius: 14,
+                      padding: 16,
+                    }}
+                  >
+                    <div
+                      style={{
+                        textAlign: "center",
+                        color: getCategoryColor(
+                          venue.category
+                        ),
+                        fontWeight: "bold",
+                        fontSize: 13,
+                        marginBottom: 8,
+                      }}
+                    >
+                      {getCategoryLabel(
+                        venue.category
+                      )}
+                    </div>
+
+                    <h3
+                      style={{
+                        marginTop: 0,
+                        marginBottom: 16,
+                        color: "#f8fafc",
+                        textAlign: "center",
+                        fontSize: 22,
+                        borderBottom:
+                          "1px solid #334155",
+                        paddingBottom: 12,
+                      }}
+                    >
+                      🏟 {venue.label}
+                    </h3>
+
+                    {venue.matches.map(
+                      (match, index) => (
+                        <ResultCard
+                          key={match.id}
+                          match={getDisplayMatch(match)}
+                          displayLabel={`Partido ${
+                            index + 1
+                          }`}
+                          onScoreChange={
+                            updateMatchNumber
+                          }
+                          onAdjustScore={adjustScore}
+                          onSave={saveResult}
+                          onObs={() =>
+                            setActiveMatchId(match.id)
+                          }
+                          onGoals={() =>
+                            setGoalMatch(getDisplayMatch(match))
+                          }
+                        />
+                      )
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </section>
+        );
+      })}
+
+      {goalMatch && (
+        <GoalScorersModal
+          key={goalMatch.id}
+          match={goalMatch}
+          teamAPlayers={
+            goalMatch.teamA
+              ? getPlayersByTeam(
+                  goalMatch.teamA.id
+                )
+              : []
+          }
+          teamBPlayers={
+            goalMatch.teamB
+              ? getPlayersByTeam(
+                  goalMatch.teamB.id
+                )
+              : []
+          }
+          existingRecords={getGoalsByMatch(
+            goalMatch.id
+          )}
+          onSave={(records) =>
+            saveGoalScorers(
+              goalMatch,
+              records
+            )
+          }
+          onClose={() => setGoalMatch(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+function ResultCard({
+  match,
+  displayLabel,
+  onScoreChange,
+  onAdjustScore,
+  onSave,
+  onObs,
+  onGoals,
+}: {
+  match: Match;
+  displayLabel: string;
+  onScoreChange: (
+    matchId: number,
+    field:
+      | "scoreA"
+      | "scoreB"
+      | "penaltyA"
+      | "penaltyB",
+    value: number
+  ) => void;
+  onAdjustScore: (
+    matchId: number,
+    field: "scoreA" | "scoreB",
+    amount: number
+  ) => void;
+  onSave: (match: Match) => void;
+  onObs: () => void;
+  onGoals: () => void;
+}) {
+  const isFinished =
+    match.status === "FINISHED";
+
+  const isGroupMatch =
+    match.stage === "GROUP";
+
+  const needsPenalties =
+    !isGroupMatch &&
+    match.scoreA === match.scoreB;
+
+  const fieldLabel =
+    getFieldLabel(match);
+
+  return (
+    <div style={resultCard}>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          gap: 12,
+          flexWrap: "wrap",
+          color: "#94a3b8",
+          fontSize: 14,
+          marginBottom: 14,
+        }}
+      >
+        <strong>{displayLabel}</strong>
+
+        <span>
+          🕒 {match.time || "--:--"} | 🏟 {fieldLabel}
+        </span>
+      </div>
+
+      <TeamScoreRow
+        team={match.teamA}
+        name={
+          match.teamA?.name ??
+          (
+            match.sourceMatchA
+              ? `Ganador Partido ${match.sourceMatchA}`
+              : "Por definir"
+          )
+        }
+        value={match.scoreA}
+        onChange={(value) =>
+          onScoreChange(
+            match.id,
+            "scoreA",
+            value
+          )
+        }
+        onMinus={() =>
+          onAdjustScore(
+            match.id,
+            "scoreA",
+            -1
+          )
+        }
+        onPlus={() =>
+          onAdjustScore(
+            match.id,
+            "scoreA",
+            1
+          )
+        }
+      />
+
+      <div style={vsText}>VS</div>
+
+      <TeamScoreRow
+        team={match.teamB}
+        name={
+          match.teamB?.name ??
+          (
+            match.sourceMatchB
+              ? `Ganador Partido ${match.sourceMatchB}`
+              : "Por definir"
+          )
+        }
+        value={match.scoreB}
+        onChange={(value) =>
+          onScoreChange(
+            match.id,
+            "scoreB",
+            value
+          )
+        }
+        onMinus={() =>
+          onAdjustScore(
+            match.id,
+            "scoreB",
+            -1
+          )
+        }
+        onPlus={() =>
+          onAdjustScore(
+            match.id,
+            "scoreB",
+            1
+          )
+        }
+      />
+
+      {needsPenalties && (
+        <div style={penaltyBox}>
+          <strong>Penales</strong>
+
+          <div style={penaltyGrid}>
+            <input
+              type="number"
+              min={0}
+              value={match.penaltyA ?? 0}
+              onChange={(event) =>
+                onScoreChange(
+                  match.id,
+                  "penaltyA",
+                  Number(event.target.value)
+                )
+              }
+              style={scoreInput}
+            />
+
+            <span>-</span>
+
+            <input
+              type="number"
+              min={0}
+              value={match.penaltyB ?? 0}
+              onChange={(event) =>
+                onScoreChange(
+                  match.id,
+                  "penaltyB",
+                  Number(event.target.value)
+                )
+              }
+              style={scoreInput}
+            />
+          </div>
+        </div>
+      )}
+
+      {isFinished && (
+        <div style={winnerBox}>
+          {match.winner
+            ? `🏆 Ganador: ${match.winner.name}`
+            : "🤝 Empate"}
+        </div>
+      )}
+
+      <div style={actionsRow}>
+        <button
+          onClick={onObs}
+          style={obsButton}
+        >
+          📺 OBS
+        </button>
+
+        <button
+          onClick={onGoals}
+          style={goalButton}
+        >
+          ⚽ Goleadores
+        </button>
+
+        <button
+          onClick={() => onSave(match)}
+          style={saveButton}
+        >
+          💾 Guardar
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function TeamScoreRow({
+  team,
+  name,
+  value,
+  onChange,
+  onMinus,
+  onPlus,
+}: {
+  team: Team | null;
+  name: string;
+  value: number;
+  onChange: (value: number) => void;
+  onMinus: () => void;
+  onPlus: () => void;
+}) {
+  return (
+    <div style={teamRow}>
+      <div style={teamIdentity}>
+        <TeamMiniLogo team={team} />
+
+        <div style={teamName}>
+          {name}
         </div>
       </div>
 
-      <div
-        style={{
-          background: "#0f172a",
-          border: "1px solid #334155",
-          borderRadius: 12,
-          padding: 20,
-          marginBottom: 25,
-        }}
-      >
-        <h3
-          style={{
-            marginTop: 0,
-          }}
+      <div style={scoreControls}>
+        <button
+          onClick={onMinus}
+          style={smallButton}
         >
-          ⏱ Cronómetro OBS
-        </h3>
+          -
+        </button>
 
+        <input
+          type="number"
+          min={0}
+          value={value}
+          onChange={(event) =>
+            onChange(
+              Number(event.target.value)
+            )
+          }
+          style={scoreInput}
+        />
+
+        <button
+          onClick={onPlus}
+          style={smallButton}
+        >
+          +
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function TeamMiniLogo({
+  team,
+}: {
+  team: Team | null;
+}) {
+  if (!team?.logoDataUrl) {
+    return (
+      <div style={teamMiniLogoEmpty}>
+        ⚽
+      </div>
+    );
+  }
+
+  return (
+    <img
+      src={team.logoDataUrl}
+      alt={team.name}
+      style={teamMiniLogo}
+    />
+  );
+}
+
+function TopScorerLogo({
+  logoDataUrl,
+  teamName,
+}: {
+  logoDataUrl?: string;
+  teamName: string;
+}) {
+  if (!logoDataUrl) {
+    return (
+      <div style={topScorerLogoEmpty}>
+        ⚽
+      </div>
+    );
+  }
+
+  return (
+    <img
+      src={logoDataUrl}
+      alt={teamName}
+      style={topScorerLogo}
+    />
+  );
+}
+
+function GoalScorersModal({
+  match,
+  teamAPlayers,
+  teamBPlayers,
+  existingRecords,
+  onSave,
+  onClose,
+}: {
+  match: Match;
+  teamAPlayers: Player[];
+  teamBPlayers: Player[];
+  existingRecords: GoalScorerRecord[];
+  onSave: (
+    records: GoalScorerRecord[]
+  ) => void;
+  onClose: () => void;
+}) {
+  const [goalsByPlayer, setGoalsByPlayer] =
+    useState<Record<string, number>>(() => {
+      const data: Record<string, number> = {};
+
+      existingRecords.forEach((record) => {
+        data[record.playerId] = record.goals;
+      });
+
+      return data;
+    });
+
+  const fieldLabel =
+    getFieldLabel(match);
+
+  const totalA =
+    teamAPlayers.reduce(
+      (sum, player) =>
+        sum + (goalsByPlayer[player.id] ?? 0),
+      0
+    );
+
+  const totalB =
+    teamBPlayers.reduce(
+      (sum, player) =>
+        sum + (goalsByPlayer[player.id] ?? 0),
+      0
+    );
+
+  function updatePlayerGoals(
+    playerId: string,
+    value: number
+  ) {
+    setGoalsByPlayer((current) => ({
+      ...current,
+      [playerId]: safeNumber(value),
+    }));
+  }
+
+  function buildRecords() {
+    const rows: GoalScorerRecord[] = [];
+
+    [...teamAPlayers, ...teamBPlayers].forEach(
+      (player) => {
+        const goals =
+          goalsByPlayer[player.id] ?? 0;
+
+        if (goals <= 0) return;
+
+        rows.push({
+          id: createId(),
+
+          matchId: match.id,
+
+          teamId: player.teamId,
+
+          teamName: player.teamName,
+
+          playerId: player.id,
+
+          playerName: player.name,
+
+          category: player.category,
+
+          courtLabel: fieldLabel,
+
+          goals,
+        });
+      }
+    );
+
+    return rows;
+  }
+
+  function save() {
+    const warnings: string[] = [];
+
+    if (
+      match.teamA &&
+      totalA !== match.scoreA
+    ) {
+      warnings.push(
+        `${match.teamA.name}: marcador ${match.scoreA}, goleadores ${totalA}`
+      );
+    }
+
+    if (
+      match.teamB &&
+      totalB !== match.scoreB
+    ) {
+      warnings.push(
+        `${match.teamB.name}: marcador ${match.scoreB}, goleadores ${totalB}`
+      );
+    }
+
+    if (warnings.length > 0) {
+      const confirmSave = window.confirm(
+        `La cantidad de goles no coincide con el marcador:\n\n${warnings.join(
+          "\n"
+        )}\n\n¿Deseas guardar de todas formas?`
+      );
+
+      if (!confirmSave) return;
+    }
+
+    onSave(buildRecords());
+  }
+
+  return (
+    <div style={modalOverlay}>
+      <div style={modalBox}>
         <div
           style={{
-            fontSize: 42,
-            fontWeight: "bold",
-            color:
-              secondsLeft <= 10
-                ? "#ef4444"
-                : "#60a5fa",
-            marginBottom: 15,
+            display: "flex",
+            justifyContent: "space-between",
+            gap: 15,
+            alignItems: "center",
+            marginBottom: 20,
           }}
         >
-          {formatTime(secondsLeft)}
+          <div>
+            <h2
+              style={{
+                margin: 0,
+                fontSize: 30,
+              }}
+            >
+              ⚽ Registro de Goleadores
+            </h2>
+
+            <p
+              style={{
+                color: "#94a3b8",
+                marginBottom: 0,
+              }}
+            >
+              Partido {match.id} | {fieldLabel} | {match.time || "--:--"}
+            </p>
+          </div>
+
+          <button
+            onClick={onClose}
+            style={closeButton}
+          >
+            ✕ Cerrar
+          </button>
         </div>
+
+        <div style={scoreSummary}>
+          <div style={modalTeamSide}>
+            <TeamMiniLogo team={match.teamA} />
+
+            <strong>
+              {match.teamA?.name ?? "Equipo A"}
+            </strong>
+          </div>
+
+          <span>
+            {match.scoreA} - {match.scoreB}
+          </span>
+
+          <div style={modalTeamSide}>
+            <TeamMiniLogo team={match.teamB} />
+
+            <strong>
+              {match.teamB?.name ?? "Equipo B"}
+            </strong>
+          </div>
+        </div>
+
+        <div style={goalGrid}>
+          <TeamGoalEditor
+            title={match.teamA?.name ?? "Equipo A"}
+            score={match.scoreA}
+            totalGoals={totalA}
+            players={teamAPlayers}
+            color="#93c5fd"
+            goalsByPlayer={goalsByPlayer}
+            onChange={updatePlayerGoals}
+          />
+
+          <TeamGoalEditor
+            title={match.teamB?.name ?? "Equipo B"}
+            score={match.scoreB}
+            totalGoals={totalB}
+            players={teamBPlayers}
+            color="#f9a8d4"
+            goalsByPlayer={goalsByPlayer}
+            onChange={updatePlayerGoals}
+          />
+        </div>
+
+        <div style={modalActions}>
+          <button
+            onClick={onClose}
+            style={secondaryButton}
+          >
+            Cancelar
+          </button>
+
+          <button
+            onClick={save}
+            style={saveButton}
+          >
+            💾 Guardar Goleadores
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TeamGoalEditor({
+  title,
+  score,
+  totalGoals,
+  players,
+  color,
+  goalsByPlayer,
+  onChange,
+}: {
+  title: string;
+  score: number;
+  totalGoals: number;
+  players: Player[];
+  color: string;
+  goalsByPlayer: Record<string, number>;
+  onChange: (
+    playerId: string,
+    value: number
+  ) => void;
+}) {
+  return (
+    <div
+      style={{
+        background: "#111827",
+        border: `1px solid ${color}`,
+        borderRadius: 14,
+        padding: 16,
+      }}
+    >
+      <h3
+        style={{
+          color,
+          marginTop: 0,
+        }}
+      >
+        {title}
+      </h3>
+
+      <p
+        style={{
+          color:
+            totalGoals === score
+              ? "#22c55e"
+              : "#facc15",
+          fontWeight: "bold",
+        }}
+      >
+        Goles registrados: {totalGoals} / Marcador: {score}
+      </p>
+
+      {players.length === 0 && (
+        <div style={emptyBox}>
+          Este equipo todavía no tiene jugadores cargados.
+        </div>
+      )}
+
+      {players.map((player) => (
+        <div
+          key={player.id}
+          style={goalPlayerRow}
+        >
+          <div>
+            <strong>{player.name}</strong>
+
+            <div
+              style={{
+                color: "#94a3b8",
+                fontSize: 13,
+              }}
+            >
+              Doc: {player.documentId || "-"} | Dorsal:{" "}
+              {player.jerseyNumber || "-"}
+            </div>
+          </div>
+
+          <input
+            type="number"
+            min={0}
+            value={goalsByPlayer[player.id] ?? 0}
+            onChange={(event) =>
+              onChange(
+                player.id,
+                Number(event.target.value)
+              )
+            }
+            style={goalInput}
+          />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function TopScorersPanel({
+  topScorers,
+  showWomen,
+  onPrint,
+  onExportExcel,
+}: {
+  topScorers: TopScorerRow[];
+  showWomen: boolean;
+  onPrint: () => void;
+  onExportExcel: () => void;
+}) {
+  const menRows = topScorers.filter(
+    (row) => row.category !== "WOMEN"
+  );
+
+  const womenRows = topScorers.filter(
+    (row) => row.category === "WOMEN"
+  );
+
+  return (
+    <div style={topScorersBox}>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          gap: 12,
+          alignItems: "center",
+          flexWrap: "wrap",
+          marginBottom: 15,
+        }}
+      >
+        <h2
+          style={{
+            margin: 0,
+          }}
+        >
+          ⚽ Tabla de Goleadores
+        </h2>
 
         <div
           style={{
             display: "flex",
-            gap: 12,
+            gap: 10,
             flexWrap: "wrap",
           }}
         >
           <button
-            onClick={startTimer}
-            style={greenButton}
+            onClick={onPrint}
+            style={printScorersButton}
           >
-            ▶ INICIAR
+            📄 Imprimir / PDF Goleadores
           </button>
 
           <button
-            onClick={pauseTimer}
-            style={secondaryButton}
+            onClick={onExportExcel}
+            style={excelScorersButton}
           >
-            ⏸ PAUSAR
-          </button>
-
-          <button
-            onClick={() => resetTimer()}
-            style={secondaryButton}
-          >
-            🔄 REINICIAR
-          </button>
-
-          <button
-            onClick={() => setActiveMatchId(null)}
-            style={secondaryButton}
-          >
-            🧹 LIMPIAR OBS
-          </button>
-
-          <button
-            onClick={() => {
-              const url = `${window.location.origin}?page=overlay`;
-              window.open(url, "_blank");
-            }}
-            style={purpleButton}
-          >
-            📺 ABRIR OVERLAY
+            📊 Exportar Excel
           </button>
         </div>
-
-        <p
-          style={{
-            color: "#94a3b8",
-            marginBottom: 0,
-            marginTop: 15,
-          }}
-        >
-          Estado:{" "}
-          <strong>
-            {timer.isRunning
-              ? "En marcha"
-              : "Pausado"}
-          </strong>
-        </p>
       </div>
 
-      {champion && (
-        <div
-          style={{
-            background: "#713f12",
-            color: "#fef3c7",
-            padding: 20,
-            borderRadius: 12,
-            marginBottom: 25,
-            fontSize: 22,
-            fontWeight: "bold",
-            textAlign: "center",
-          }}
-        >
-          🏆 CAMPEÓN: {champion.name}
-        </div>
+      <div style={topScorersGrid}>
+        <TopScorersTable
+          title={getGoalCategoryTitle("MEN")}
+          rows={menRows}
+          color="#93c5fd"
+        />
+
+        {showWomen && (
+          <TopScorersTable
+            title={getGoalCategoryTitle("WOMEN")}
+            rows={womenRows}
+            color="#f9a8d4"
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
+function TopScorersTable({
+  title,
+  rows,
+  color,
+}: {
+  title: string;
+  rows: TopScorerRow[];
+  color: string;
+}) {
+  return (
+    <div
+      style={{
+        background: "#0f172a",
+        border: `1px solid ${color}`,
+        borderRadius: 12,
+        padding: 16,
+      }}
+    >
+      <h3
+        style={{
+          color,
+          marginTop: 0,
+        }}
+      >
+        {title}
+      </h3>
+
+      {rows.length === 0 ? (
+        <p style={{ color: "#94a3b8" }}>
+          Sin goles registrados.
+        </p>
+      ) : (
+        <table style={tableStyle}>
+          <thead>
+            <tr>
+              <th style={thStyle}>Pos</th>
+              <th style={thStyle}>Jugador</th>
+              <th style={thStyle}>Equipo</th>
+              <th style={thStyle}>Goles</th>
+            </tr>
+          </thead>
+
+          <tbody>
+            {rows.slice(0, 10).map((row, index) => (
+              <tr key={row.key}>
+                <td style={tdStyle}>
+                  {index + 1}
+                </td>
+
+                <td style={tdStyle}>
+                  {row.playerName}
+                </td>
+
+                <td style={tdStyle}>
+                  <div style={topScorerTeamCell}>
+                    <TopScorerLogo
+                      logoDataUrl={row.teamLogoDataUrl}
+                      teamName={row.teamName}
+                    />
+
+                    <span>{row.teamName}</span>
+                  </div>
+                </td>
+
+                <td style={tdStyle}>
+                  <strong>{row.goals}</strong>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       )}
-
-      {fixture.map((match) => {
-        const finished =
-          match.status === "FINISHED";
-
-        const playing =
-          match.status === "PLAYING";
-
-        const ready =
-          Boolean(match.teamA && match.teamB);
-
-        const active =
-          activeMatchId === match.id;
-
-        const scoreA = getScore(match.id, "a");
-        const scoreB = getScore(match.id, "b");
-
-        const showPenalties =
-          ready &&
-          !finished &&
-          scoreA === scoreB;
-
-        return (
-          <div
-            key={match.id}
-            style={{
-              background: "#1e293b",
-              padding: 20,
-              borderRadius: 12,
-              marginBottom: 25,
-              border: active
-                ? "2px solid #facc15"
-                : finished
-                ? "2px solid #16a34a"
-                : playing
-                ? "2px solid #22c55e"
-                : "1px solid #334155",
-              breakInside: "avoid",
-            }}
-          >
-            <h3>
-              Partido {match.id}
-
-              {active && (
-                <span
-                  style={{
-                    marginLeft: 10,
-                    color: "#facc15",
-                    fontSize: 14,
-                  }}
-                >
-                  📺 En OBS
-                </span>
-              )}
-
-              {playing && (
-                <span
-                  style={{
-                    marginLeft: 10,
-                    color: "#22c55e",
-                    fontSize: 14,
-                  }}
-                >
-                  🟢 En juego
-                </span>
-              )}
-            </h3>
-
-            <p>
-              {match.teamA?.name ?? "Por definir"}
-              {"  VS  "}
-              {match.teamB?.name ?? "Por definir"}
-            </p>
-
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "1fr auto",
-                gap: 15,
-                marginTop: 20,
-                alignItems: "center",
-              }}
-            >
-              <strong>
-                {match.teamA?.name ?? "Equipo A"}
-              </strong>
-
-              <div style={scoreControls}>
-                <button
-                  disabled={finished || !ready}
-                  onClick={() => removeGoal(match.id, "a")}
-                  style={scoreButton}
-                >
-                  -
-                </button>
-
-                <input
-                  type="number"
-                  min={0}
-                  disabled={finished || !ready}
-                  value={scoreA}
-                  onChange={(e) =>
-                    updateScore(
-                      match.id,
-                      "a",
-                      Number(e.target.value)
-                    )
-                  }
-                  style={scoreInput}
-                />
-
-                <button
-                  disabled={finished || !ready}
-                  onClick={() => addGoal(match.id, "a")}
-                  style={scoreButton}
-                >
-                  +
-                </button>
-              </div>
-
-              <strong>
-                {match.teamB?.name ?? "Equipo B"}
-              </strong>
-
-              <div style={scoreControls}>
-                <button
-                  disabled={finished || !ready}
-                  onClick={() => removeGoal(match.id, "b")}
-                  style={scoreButton}
-                >
-                  -
-                </button>
-
-                <input
-                  type="number"
-                  min={0}
-                  disabled={finished || !ready}
-                  value={scoreB}
-                  onChange={(e) =>
-                    updateScore(
-                      match.id,
-                      "b",
-                      Number(e.target.value)
-                    )
-                  }
-                  style={scoreInput}
-                />
-
-                <button
-                  disabled={finished || !ready}
-                  onClick={() => addGoal(match.id, "b")}
-                  style={scoreButton}
-                >
-                  +
-                </button>
-              </div>
-            </div>
-
-            {showPenalties && (
-              <div
-                style={{
-                  marginTop: 20,
-                  background: "#0f172a",
-                  border: "1px solid #facc15",
-                  borderRadius: 12,
-                  padding: 15,
-                }}
-              >
-                <strong
-                  style={{
-                    color: "#facc15",
-                  }}
-                >
-                  ⚽ Definir por penales
-                </strong>
-
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "1fr auto",
-                    gap: 15,
-                    marginTop: 15,
-                    alignItems: "center",
-                  }}
-                >
-                  <span>
-                    {match.teamA?.name}
-                  </span>
-
-                  <div style={scoreControls}>
-                    <button
-                      onClick={() => removePenalty(match.id, "a")}
-                      style={scoreButton}
-                    >
-                      -
-                    </button>
-
-                    <input
-                      type="number"
-                      min={0}
-                      value={getPenalty(match.id, "a")}
-                      onChange={(e) =>
-                        updatePenalty(
-                          match.id,
-                          "a",
-                          Number(e.target.value)
-                        )
-                      }
-                      style={scoreInput}
-                    />
-
-                    <button
-                      onClick={() => addPenalty(match.id, "a")}
-                      style={scoreButton}
-                    >
-                      +
-                    </button>
-                  </div>
-
-                  <span>
-                    {match.teamB?.name}
-                  </span>
-
-                  <div style={scoreControls}>
-                    <button
-                      onClick={() => removePenalty(match.id, "b")}
-                      style={scoreButton}
-                    >
-                      -
-                    </button>
-
-                    <input
-                      type="number"
-                      min={0}
-                      value={getPenalty(match.id, "b")}
-                      onChange={(e) =>
-                        updatePenalty(
-                          match.id,
-                          "b",
-                          Number(e.target.value)
-                        )
-                      }
-                      style={scoreInput}
-                    />
-
-                    <button
-                      onClick={() => addPenalty(match.id, "b")}
-                      style={scoreButton}
-                    >
-                      +
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {finished && (
-              <div
-                style={{
-                  marginTop: 15,
-                  color: "#bbf7d0",
-                  fontWeight: "bold",
-                }}
-              >
-                Resultado final: {match.scoreA} - {match.scoreB}
-                {match.penaltyA !== undefined &&
-                  match.penaltyB !== undefined && (
-                    <>
-                      {" "}
-                      | Penales: {match.penaltyA} - {match.penaltyB}
-                    </>
-                  )}
-              </div>
-            )}
-
-            {active && !finished && (
-              <div
-                style={{
-                  marginTop: 15,
-                  color: "#facc15",
-                  fontWeight: "bold",
-                }}
-              >
-                Marcador en vivo para OBS
-              </div>
-            )}
-
-            <div
-              style={{
-                display: "flex",
-                gap: 12,
-                marginTop: 20,
-                flexWrap: "wrap",
-              }}
-            >
-              {!finished ? (
-                <button
-                  disabled={!ready}
-                  onClick={() => saveResult(match.id)}
-                  style={{
-                    padding: "10px 20px",
-                    background: !ready
-                      ? "#475569"
-                      : "#2563eb",
-                    color: "white",
-                    border: "none",
-                    borderRadius: 8,
-                    cursor: !ready
-                      ? "not-allowed"
-                      : "pointer",
-                  }}
-                >
-                  GUARDAR RESULTADO
-                </button>
-              ) : (
-                <div
-                  style={{
-                    padding: 12,
-                    background: "#14532d",
-                    color: "#bbf7d0",
-                    borderRadius: 8,
-                    fontWeight: "bold",
-                  }}
-                >
-                  🏆 Ganador: {match.winner?.name}
-                </div>
-              )}
-
-              <button
-                disabled={!ready}
-                onClick={() => showInOBS(match.id)}
-                style={{
-                  padding: "10px 20px",
-                  background: active
-                    ? "#facc15"
-                    : ready
-                    ? "#7c3aed"
-                    : "#475569",
-                  color: active ? "#111827" : "white",
-                  border: "none",
-                  borderRadius: 8,
-                  cursor: ready
-                    ? "pointer"
-                    : "not-allowed",
-                  fontWeight: "bold",
-                }}
-              >
-                📺 MOSTRAR EN OBS
-              </button>
-            </div>
-          </div>
-        );
-      })}
     </div>
   );
 }
@@ -903,14 +1880,7 @@ function InfoBox({
   value: string | number;
 }) {
   return (
-    <div
-      style={{
-        background: "#0f172a",
-        border: "1px solid #334155",
-        borderRadius: 10,
-        padding: 14,
-      }}
-    >
+    <div style={infoBox}>
       <div
         style={{
           color: "#94a3b8",
@@ -933,37 +1903,95 @@ function InfoBox({
   );
 }
 
-const scoreControls: React.CSSProperties = {
-  display: "flex",
-  gap: 8,
-  alignItems: "center",
-};
+function ChampionCard({
+  title,
+  value,
+  color,
+}: {
+  title: string;
+  value: string;
+  color: string;
+}) {
+  return (
+    <div
+      style={{
+        background: "#0f172a",
+        border: `1px solid ${color}`,
+        borderRadius: 12,
+        padding: 16,
+      }}
+    >
+      <div
+        style={{
+          color,
+          fontWeight: "bold",
+          marginBottom: 8,
+        }}
+      >
+        {title}
+      </div>
 
-const scoreInput: React.CSSProperties = {
-  width: 70,
-  padding: 10,
-  fontSize: 20,
-  fontWeight: "bold",
-  textAlign: "center",
-  borderRadius: 8,
+      <div
+        style={{
+          fontSize: 22,
+          fontWeight: "bold",
+        }}
+      >
+        {value}
+      </div>
+    </div>
+  );
+}
+
+const headerBox: CSSProperties = {
+  background: "#1e293b",
   border: "1px solid #334155",
+  borderRadius: 14,
+  padding: 25,
+  marginBottom: 30,
 };
 
-const scoreButton: React.CSSProperties = {
-  width: 38,
-  height: 38,
-  borderRadius: 8,
-  border: "none",
-  background: "#334155",
-  color: "white",
-  cursor: "pointer",
-  fontSize: 20,
-  fontWeight: "bold",
+const infoGrid: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns:
+    "repeat(auto-fit, minmax(150px, 1fr))",
+  gap: 15,
+  marginTop: 25,
 };
 
-const primaryButton: React.CSSProperties = {
+const infoBox: CSSProperties = {
+  background: "#0f172a",
+  border: "1px solid #334155",
+  borderRadius: 10,
+  padding: 14,
+};
+
+const championsBox: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns:
+    "repeat(auto-fit, minmax(220px, 1fr))",
+  gap: 15,
+  marginTop: 20,
+};
+
+const topScorersBox: CSSProperties = {
+  background: "#111827",
+  border: "1px solid #334155",
+  borderRadius: 14,
+  padding: 18,
+  marginTop: 22,
+};
+
+const topScorersGrid: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns:
+    "repeat(auto-fit, minmax(320px, 1fr))",
+  gap: 15,
+};
+
+const printScorersButton: CSSProperties = {
   padding: "12px 18px",
-  background: "#2563eb",
+  background: "#f97316",
   color: "white",
   border: "none",
   borderRadius: 8,
@@ -971,7 +1999,7 @@ const primaryButton: React.CSSProperties = {
   fontWeight: "bold",
 };
 
-const greenButton: React.CSSProperties = {
+const excelScorersButton: CSSProperties = {
   padding: "12px 18px",
   background: "#16a34a",
   color: "white",
@@ -981,7 +2009,207 @@ const greenButton: React.CSSProperties = {
   fontWeight: "bold",
 };
 
-const secondaryButton: React.CSSProperties = {
+const emptyBox: CSSProperties = {
+  background: "#1e293b",
+  border: "1px solid #334155",
+  borderRadius: 14,
+  padding: 25,
+  color: "#94a3b8",
+};
+
+const resultCard: CSSProperties = {
+  background: "#1e293b",
+  border: "1px solid #334155",
+  borderRadius: 14,
+  padding: 16,
+  marginBottom: 18,
+};
+
+const teamRow: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "1fr 130px",
+  gap: 12,
+  alignItems: "center",
+  marginTop: 10,
+};
+
+const teamIdentity: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: 12,
+  minWidth: 0,
+};
+
+const teamMiniLogo: CSSProperties = {
+  width: 46,
+  height: 46,
+  objectFit: "contain",
+  background: "#0f172a",
+  border: "1px solid #334155",
+  borderRadius: 10,
+  padding: 4,
+  flexShrink: 0,
+};
+
+const teamMiniLogoEmpty: CSSProperties = {
+  width: 46,
+  height: 46,
+  background: "#0f172a",
+  border: "1px solid #334155",
+  borderRadius: 10,
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  flexShrink: 0,
+};
+
+const topScorerLogo: CSSProperties = {
+  width: 34,
+  height: 34,
+  objectFit: "contain",
+  background: "#020617",
+  border: "1px solid #334155",
+  borderRadius: 8,
+  padding: 3,
+  flexShrink: 0,
+};
+
+const topScorerLogoEmpty: CSSProperties = {
+  width: 34,
+  height: 34,
+  background: "#020617",
+  border: "1px solid #334155",
+  borderRadius: 8,
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  flexShrink: 0,
+  fontSize: 15,
+};
+
+const topScorerTeamCell: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: 10,
+};
+
+const teamName: CSSProperties = {
+  fontSize: 17,
+  fontWeight: "bold",
+  wordBreak: "break-word",
+};
+
+const scoreControls: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "32px 60px 32px",
+  gap: 6,
+  alignItems: "center",
+};
+
+const scoreInput: CSSProperties = {
+  width: "100%",
+  padding: "8px 4px",
+  textAlign: "center",
+  borderRadius: 8,
+  border: "1px solid #334155",
+  background: "#0f172a",
+  color: "white",
+  fontWeight: "bold",
+};
+
+const smallButton: CSSProperties = {
+  padding: "8px 0",
+  border: "none",
+  borderRadius: 8,
+  background: "#334155",
+  color: "white",
+  cursor: "pointer",
+  fontWeight: "bold",
+};
+
+const vsText: CSSProperties = {
+  textAlign: "center",
+  color: "#60a5fa",
+  fontWeight: "bold",
+  marginTop: 10,
+};
+
+const penaltyBox: CSSProperties = {
+  marginTop: 15,
+  background: "#713f12",
+  color: "#fef3c7",
+  padding: 12,
+  borderRadius: 10,
+  textAlign: "center",
+};
+
+const penaltyGrid: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "1fr 20px 1fr",
+  gap: 8,
+  alignItems: "center",
+  marginTop: 10,
+};
+
+const winnerBox: CSSProperties = {
+  marginTop: 15,
+  background: "#064e3b",
+  color: "#bbf7d0",
+  padding: 10,
+  borderRadius: 10,
+  textAlign: "center",
+  fontWeight: "bold",
+};
+
+const actionsRow: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns:
+    "repeat(auto-fit, minmax(120px, 1fr))",
+  gap: 10,
+  marginTop: 15,
+};
+
+const saveButton: CSSProperties = {
+  padding: "12px",
+  background: "#16a34a",
+  color: "white",
+  border: "none",
+  borderRadius: 8,
+  cursor: "pointer",
+  fontWeight: "bold",
+};
+
+const obsButton: CSSProperties = {
+  padding: "12px",
+  background: "#7c3aed",
+  color: "white",
+  border: "none",
+  borderRadius: 8,
+  cursor: "pointer",
+  fontWeight: "bold",
+};
+
+const goalButton: CSSProperties = {
+  padding: "12px",
+  background: "#f97316",
+  color: "white",
+  border: "none",
+  borderRadius: 8,
+  cursor: "pointer",
+  fontWeight: "bold",
+};
+
+const primaryButton: CSSProperties = {
+  padding: "12px 18px",
+  background: "#2563eb",
+  color: "white",
+  border: "none",
+  borderRadius: 8,
+  cursor: "pointer",
+  fontWeight: "bold",
+};
+
+const secondaryButton: CSSProperties = {
   padding: "12px 18px",
   background: "#334155",
   color: "white",
@@ -991,12 +2219,122 @@ const secondaryButton: React.CSSProperties = {
   fontWeight: "bold",
 };
 
-const purpleButton: React.CSSProperties = {
+const dangerButton: CSSProperties = {
   padding: "12px 18px",
-  background: "#7c3aed",
+  background: "#dc2626",
   color: "white",
   border: "none",
   borderRadius: 8,
   cursor: "pointer",
   fontWeight: "bold",
+};
+
+const modalOverlay: CSSProperties = {
+  position: "fixed",
+  inset: 0,
+  background: "rgba(2, 6, 23, 0.85)",
+  zIndex: 9999,
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  padding: 20,
+};
+
+const modalBox: CSSProperties = {
+  width: "min(1100px, 95vw)",
+  maxHeight: "88vh",
+  overflowY: "auto",
+  background: "#1e293b",
+  border: "1px solid #475569",
+  borderRadius: 18,
+  padding: 25,
+  boxShadow: "0 25px 80px rgba(0,0,0,0.45)",
+};
+
+const closeButton: CSSProperties = {
+  padding: "12px 18px",
+  background: "#dc2626",
+  color: "white",
+  border: "none",
+  borderRadius: 10,
+  cursor: "pointer",
+  fontWeight: "bold",
+};
+
+const scoreSummary: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "1fr 120px 1fr",
+  gap: 12,
+  alignItems: "center",
+  textAlign: "center",
+  background: "#0f172a",
+  border: "1px solid #334155",
+  borderRadius: 12,
+  padding: 16,
+  marginBottom: 20,
+  fontSize: 20,
+};
+
+const modalTeamSide: CSSProperties = {
+  display: "flex",
+  justifyContent: "center",
+  alignItems: "center",
+  gap: 10,
+};
+
+const goalGrid: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns:
+    "repeat(auto-fit, minmax(320px, 1fr))",
+  gap: 18,
+};
+
+const modalActions: CSSProperties = {
+  display: "flex",
+  justifyContent: "flex-end",
+  gap: 12,
+  marginTop: 20,
+  flexWrap: "wrap",
+};
+
+const goalPlayerRow: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "1fr 80px",
+  gap: 12,
+  alignItems: "center",
+  background: "#0f172a",
+  border: "1px solid #334155",
+  borderRadius: 10,
+  padding: 12,
+  marginBottom: 10,
+};
+
+const goalInput: CSSProperties = {
+  width: "100%",
+  padding: 10,
+  textAlign: "center",
+  borderRadius: 8,
+  border: "1px solid #334155",
+  background: "#020617",
+  color: "white",
+  fontWeight: "bold",
+  fontSize: 18,
+};
+
+const tableStyle: CSSProperties = {
+  width: "100%",
+  borderCollapse: "collapse",
+};
+
+const thStyle: CSSProperties = {
+  background: "#111827",
+  border: "1px solid #334155",
+  padding: 9,
+  textAlign: "left",
+  color: "#e5e7eb",
+};
+
+const tdStyle: CSSProperties = {
+  border: "1px solid #334155",
+  padding: 9,
 };

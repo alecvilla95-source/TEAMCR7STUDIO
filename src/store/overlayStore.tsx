@@ -6,23 +6,26 @@ import {
   type ReactNode,
 } from "react";
 
-import {
-  loadData,
-  saveData,
-} from "../services/storageService";
-
-interface OverlayContextType {
+interface OverlayContextValue {
   activeMatchId: number | null;
-  setActiveMatchId: (id: number | null) => void;
+  setActiveMatchId: (matchId: number | null) => void;
 }
 
-const OverlayContext =
-  createContext<OverlayContextType>(
-    {} as OverlayContextType
-  );
+const OverlayContext = createContext<OverlayContextValue | null>(null);
 
-const STORAGE_KEY =
-  "teamcr7studio_activeMatchId";
+const STORAGE_KEY = "teamcr7studio_active_match_id";
+
+function readStoredActiveMatchId() {
+  const value = localStorage.getItem(STORAGE_KEY);
+
+  if (!value) return null;
+
+  const parsed = Number(value);
+
+  if (Number.isNaN(parsed)) return null;
+
+  return parsed;
+}
 
 export function OverlayProvider({
   children,
@@ -30,44 +33,36 @@ export function OverlayProvider({
   children: ReactNode;
 }) {
   const [activeMatchId, setActiveMatchIdState] =
-    useState<number | null>(() =>
-      loadData<number | null>(
-        "activeMatchId",
-        null
-      )
-    );
+    useState<number | null>(() => readStoredActiveMatchId());
 
-  function setActiveMatchId(id: number | null) {
-    setActiveMatchIdState(id);
+  function setActiveMatchId(matchId: number | null) {
+    setActiveMatchIdState(matchId);
 
-    saveData(
-      "activeMatchId",
-      id
-    );
+    if (matchId === null) {
+      localStorage.removeItem(STORAGE_KEY);
+      return;
+    }
+
+    localStorage.setItem(STORAGE_KEY, String(matchId));
   }
 
   useEffect(() => {
     function handleStorage(event: StorageEvent) {
       if (event.key !== STORAGE_KEY) return;
 
-      const updated = loadData<number | null>(
-        "activeMatchId",
-        null
-      );
-
-      setActiveMatchIdState(updated);
+      setActiveMatchIdState(readStoredActiveMatchId());
     }
 
-    window.addEventListener(
-      "storage",
-      handleStorage
-    );
+    function handleFocus() {
+      setActiveMatchIdState(readStoredActiveMatchId());
+    }
+
+    window.addEventListener("storage", handleStorage);
+    window.addEventListener("focus", handleFocus);
 
     return () => {
-      window.removeEventListener(
-        "storage",
-        handleStorage
-      );
+      window.removeEventListener("storage", handleStorage);
+      window.removeEventListener("focus", handleFocus);
     };
   }, []);
 
@@ -84,5 +79,13 @@ export function OverlayProvider({
 }
 
 export function useOverlay() {
-  return useContext(OverlayContext);
+  const context = useContext(OverlayContext);
+
+  if (!context) {
+    throw new Error(
+      "useOverlay debe usarse dentro de OverlayProvider"
+    );
+  }
+
+  return context;
 }

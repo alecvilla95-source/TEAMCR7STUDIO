@@ -1,9 +1,16 @@
-import type { Team } from "./team";
+import type {
+  Team,
+  TeamCategory,
+} from "./team";
 
 export type MatchStatus =
   | "PENDING"
   | "PLAYING"
   | "FINISHED";
+
+export type MatchStage =
+  | "ELIMINATION"
+  | "GROUP";
 
 export interface Match {
   id: number;
@@ -13,6 +20,10 @@ export interface Match {
   order: number;
 
   court: number;
+
+  courtLabel?: string;
+
+  category?: TeamCategory;
 
   time: string;
 
@@ -39,4 +50,8 @@ export interface Match {
   sourceMatchA?: number | null;
 
   sourceMatchB?: number | null;
+
+  stage?: MatchStage;
+
+  groupName?: string;
 }

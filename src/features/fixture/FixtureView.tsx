@@ -1,11 +1,242 @@
+import {
+  type CSSProperties,
+} from "react";
+
+import MatchCard from "../../components/match/MatchCard";
+
+import type { Match } from "../../types/match";
+import type { TeamCategory } from "../../types/team";
+
 import { useFixture } from "../../store/fixtureStore";
 import { useTournament } from "../../store/tournamentStore";
 import { useTeams } from "../../store/teamStore";
 import { useApp } from "../../store/appStore";
 
-import { groupMatches } from "../../utils/groupMatches";
+import { getRoundName } from "../../utils/tournamentUtils";
 
-import MatchCard from "../../components/match/MatchCard";
+type VenueCategory =
+  | TeamCategory
+  | "GENERAL";
+
+interface RoundGroup {
+  key: string;
+  round: number;
+  name: string;
+  matches: Match[];
+}
+
+interface VenueGroup {
+  key: string;
+  label: string;
+  category: VenueCategory;
+  court: number;
+  matches: Match[];
+}
+
+function getWomenFieldLetter(index: number) {
+  const letters = ["A", "B", "C", "D"];
+
+  return letters[index - 1] ?? String(index);
+}
+
+function replaceOldCourtText(label: string) {
+  return label
+    .replaceAll("C. Mujer 1", "Campo A")
+    .replaceAll("C. Mujer 2", "Campo B")
+    .replaceAll("C. Mujer 3", "Campo C")
+    .replaceAll("C. Mujer 4", "Campo D")
+    .replaceAll("Cancha 1", "Campo 1")
+    .replaceAll("Cancha 2", "Campo 2")
+    .replaceAll("Cancha 3", "Campo 3")
+    .replaceAll("Cancha 4", "Campo 4")
+    .replaceAll("cancha", "campo")
+    .replaceAll("Cancha", "Campo")
+    .replaceAll("canchas", "campos")
+    .replaceAll("Canchas", "Campos");
+}
+
+function getFieldLabel(match: Match) {
+  if (match.courtLabel) {
+    return replaceOldCourtText(match.courtLabel);
+  }
+
+  if (match.category === "WOMEN") {
+    return `Campo ${getWomenFieldLetter(match.court || 1)}`;
+  }
+
+  return `Campo ${match.court || 1}`;
+}
+
+function getDisplayMatch(match: Match): Match {
+  return {
+    ...match,
+    courtLabel: getFieldLabel(match),
+  };
+}
+
+function getCategoryLabel(
+  category: VenueCategory
+) {
+  if (category === "MEN") return "VARONES";
+
+  if (category === "WOMEN") return "MUJERES";
+
+  return "GENERAL";
+}
+
+function getCategoryColor(
+  category: VenueCategory
+) {
+  if (category === "WOMEN") return "#f9a8d4";
+
+  if (category === "MEN") return "#93c5fd";
+
+  return "#facc15";
+}
+
+function getSmartRoundName(
+  matches: Match[],
+  round: number
+) {
+  const first = matches[0];
+
+  if (first?.groupName) {
+    return first.groupName;
+  }
+
+  const hasFinalLabel = matches.some((match) =>
+    getFieldLabel(match)
+      .toUpperCase()
+      .includes("FINAL")
+  );
+
+  if (hasFinalLabel) {
+    return "FINALES GENERALES";
+  }
+
+  const hasFieldLabels = matches.some(
+    (match) => match.courtLabel
+  );
+
+  if (hasFieldLabels) {
+    return `RONDA ${round}`;
+  }
+
+  return getRoundName(matches.length * 2);
+}
+
+function groupByRoundOrGroup(
+  matches: Match[]
+): RoundGroup[] {
+  const map = new Map<string, Match[]>();
+
+  matches.forEach((match) => {
+    const key =
+      match.groupName ??
+      `ROUND_${match.round}`;
+
+    if (!map.has(key)) {
+      map.set(key, []);
+    }
+
+    map.get(key)!.push(match);
+  });
+
+  return Array.from(map.entries())
+    .map(([key, list]) => {
+      const sorted = [...list].sort((a, b) => {
+        if (a.round !== b.round) {
+          return a.round - b.round;
+        }
+
+        if (a.order !== b.order) {
+          return a.order - b.order;
+        }
+
+        return a.court - b.court;
+      });
+
+      const round =
+        sorted[0]?.round ?? 1;
+
+      return {
+        key,
+        round,
+        name: getSmartRoundName(
+          sorted,
+          round
+        ),
+        matches: sorted,
+      };
+    })
+    .sort((a, b) => a.round - b.round);
+}
+
+function groupByVenue(
+  matches: Match[]
+): VenueGroup[] {
+  const map = new Map<string, VenueGroup>();
+
+  matches.forEach((match) => {
+    const label = getFieldLabel(match);
+
+    const category: VenueCategory =
+      match.category ?? "GENERAL";
+
+    const key =
+      `${category}_${label}`;
+
+    if (!map.has(key)) {
+      map.set(key, {
+        key,
+        label,
+        category,
+        court: match.court || 1,
+        matches: [],
+      });
+    }
+
+    map.get(key)!.matches.push(match);
+  });
+
+  const categoryOrder: Record<
+    VenueCategory,
+    number
+  > = {
+    MEN: 1,
+    WOMEN: 2,
+    GENERAL: 3,
+  };
+
+  return Array.from(map.values())
+    .map((venue) => ({
+      ...venue,
+      matches: [...venue.matches].sort((a, b) => {
+        if (a.time !== b.time) {
+          return a.time.localeCompare(b.time);
+        }
+
+        return a.order - b.order;
+      }),
+    }))
+    .sort((a, b) => {
+      if (
+        categoryOrder[a.category] !==
+        categoryOrder[b.category]
+      ) {
+        return (
+          categoryOrder[a.category] -
+          categoryOrder[b.category]
+        );
+      }
+
+      if (a.court !== b.court) {
+        return a.court - b.court;
+      }
+
+      return a.label.localeCompare(b.label);
+    });
+}
 
 export default function FixtureView() {
   const { fixture } = useFixture();
@@ -16,7 +247,8 @@ export default function FixtureView() {
 
   const { setPage } = useApp();
 
-  const rounds = groupMatches(fixture);
+  const rounds =
+    groupByRoundOrGroup(fixture);
 
   const finishedMatches = fixture.filter(
     (match) => match.status === "FINISHED"
@@ -28,15 +260,7 @@ export default function FixtureView() {
 
   return (
     <div>
-      <div
-        style={{
-          background: "#1e293b",
-          border: "1px solid #334155",
-          borderRadius: 14,
-          padding: 25,
-          marginBottom: 30,
-        }}
-      >
+      <div style={headerBox}>
         <div
           style={{
             display: "flex",
@@ -78,6 +302,13 @@ export default function FixtureView() {
                   ? "Fase de Grupos"
                   : "Eliminación Directa"}
               </strong>
+              {" | "}
+              Sistema:{" "}
+              <strong>
+                {tournament?.courtMode === "SEPARATE_BRACKETS"
+                  ? "Llaves separadas por campo"
+                  : "Reparto por horario"}
+              </strong>
             </p>
           </div>
 
@@ -104,15 +335,7 @@ export default function FixtureView() {
           </div>
         </div>
 
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns:
-              "repeat(auto-fit, minmax(150px, 1fr))",
-            gap: 15,
-            marginTop: 25,
-          }}
-        >
+        <div style={infoGrid}>
           <InfoBox
             label="Equipos"
             value={teams.length}
@@ -129,8 +352,13 @@ export default function FixtureView() {
           />
 
           <InfoBox
-            label="Canchas"
+            label="Campos Varones"
             value={tournament?.courts ?? 0}
+          />
+
+          <InfoBox
+            label="Campos Mujeres"
+            value={tournament?.womenCourts ?? 0}
           />
 
           <InfoBox
@@ -145,47 +373,115 @@ export default function FixtureView() {
         </div>
       </div>
 
-      {rounds.length === 0 && (
-        <div
-          style={{
-            background: "#1e293b",
-            border: "1px solid #334155",
-            borderRadius: 14,
-            padding: 25,
-            color: "#94a3b8",
-          }}
-        >
+      {fixture.length === 0 && (
+        <div style={emptyBox}>
           Todavía no hay fixture generado.
         </div>
       )}
 
-      {rounds.map((round) => (
-        <div
-          key={round.id}
-          style={{
-            marginBottom: 40,
-            breakInside: "avoid",
-          }}
-        >
-          <h3
+      {rounds.map((roundGroup) => {
+        const venues =
+          groupByVenue(roundGroup.matches);
+
+        return (
+          <section
+            key={roundGroup.key}
             style={{
-              borderBottom: "2px solid #334155",
-              paddingBottom: 10,
-              marginBottom: 20,
-              color: "#60a5fa",
+              marginBottom: 50,
+              breakInside: "avoid",
             }}
           >
-            {round.name}
-          </h3>
+            <h2
+              style={{
+                color: "#60a5fa",
+                fontSize: 26,
+                borderBottom: "3px solid #334155",
+                paddingBottom: 12,
+                marginBottom: 25,
+              }}
+            >
+              {roundGroup.name}
+            </h2>
 
-          {round.matches.map((match) => (
-            <MatchCard
-              key={match.id}
-              match={match}
-            />
-          ))}
-        </div>
-      ))}
+            <div
+              style={{
+                overflowX: "auto",
+                paddingBottom: 12,
+              }}
+            >
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: `repeat(${venues.length}, minmax(320px, 1fr))`,
+                  minWidth:
+                    venues.length > 3
+                      ? venues.length * 340
+                      : undefined,
+                  gap: 22,
+                  alignItems: "start",
+                }}
+              >
+                {venues.map((venue) => (
+                  <div
+                    key={venue.key}
+                    style={{
+                      background: "#0f172a",
+                      border: `1px solid ${getCategoryColor(
+                        venue.category
+                      )}`,
+                      borderRadius: 14,
+                      padding: 16,
+                    }}
+                  >
+                    <div
+                      style={{
+                        textAlign: "center",
+                        color: getCategoryColor(
+                          venue.category
+                        ),
+                        fontWeight: "bold",
+                        fontSize: 13,
+                        marginBottom: 8,
+                      }}
+                    >
+                      {getCategoryLabel(
+                        venue.category
+                      )}
+                    </div>
+
+                    <h4
+                      style={{
+                        marginTop: 0,
+                        marginBottom: 16,
+                        color: "#f8fafc",
+                        textAlign: "center",
+                        fontSize: 22,
+                        borderBottom:
+                          "1px solid #334155",
+                        paddingBottom: 12,
+                      }}
+                    >
+                      🏟 {venue.label}
+                    </h4>
+
+                    {venue.matches.map(
+                      (match, index) => (
+                        <MatchCard
+                          key={match.id}
+                          match={getDisplayMatch(match)}
+                          displayLabel={`Partido ${
+                            index + 1
+                          }`}
+                        />
+                      )
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </section>
+        );
+      })}
     </div>
   );
 }
@@ -198,14 +494,7 @@ function InfoBox({
   value: string | number;
 }) {
   return (
-    <div
-      style={{
-        background: "#0f172a",
-        border: "1px solid #334155",
-        borderRadius: 10,
-        padding: 14,
-      }}
-    >
+    <div style={infoBox}>
       <div
         style={{
           color: "#94a3b8",
@@ -228,7 +517,38 @@ function InfoBox({
   );
 }
 
-const primaryButton: React.CSSProperties = {
+const headerBox: CSSProperties = {
+  background: "#1e293b",
+  border: "1px solid #334155",
+  borderRadius: 14,
+  padding: 25,
+  marginBottom: 30,
+};
+
+const infoGrid: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns:
+    "repeat(auto-fit, minmax(150px, 1fr))",
+  gap: 15,
+  marginTop: 25,
+};
+
+const infoBox: CSSProperties = {
+  background: "#0f172a",
+  border: "1px solid #334155",
+  borderRadius: 10,
+  padding: 14,
+};
+
+const emptyBox: CSSProperties = {
+  background: "#1e293b",
+  border: "1px solid #334155",
+  borderRadius: 14,
+  padding: 25,
+  color: "#94a3b8",
+};
+
+const primaryButton: CSSProperties = {
   padding: "12px 18px",
   background: "#2563eb",
   color: "white",
@@ -238,7 +558,7 @@ const primaryButton: React.CSSProperties = {
   fontWeight: "bold",
 };
 
-const secondaryButton: React.CSSProperties = {
+const secondaryButton: CSSProperties = {
   padding: "12px 18px",
   background: "#334155",
   color: "white",

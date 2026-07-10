@@ -2,59 +2,142 @@ import {
   createContext,
   useContext,
   useEffect,
+  useMemo,
   useState,
   type ReactNode,
 } from "react";
 
-import {
-  loadData,
-  saveData,
-} from "../services/storageService";
-
 interface TimerState {
   durationSeconds: number;
-  remainingSeconds: number;
-  isRunning: boolean;
+  baseSeconds: number;
   startedAt: number | null;
+  isRunning: boolean;
+  updatedAt: number;
 }
 
-interface TimerContextType {
-  timer: TimerState;
+interface TimerContextValue {
   secondsLeft: number;
-  setTimerDuration: (seconds: number) => void;
+  durationSeconds: number;
+  isRunning: boolean;
+  timer: {
+    isRunning: boolean;
+    durationSeconds: number;
+  };
   startTimer: () => void;
   pauseTimer: () => void;
+  stopTimer: () => void;
   resetTimer: (seconds?: number) => void;
+  restartTimer: () => void;
+  setDurationMinutes: (minutes: number) => void;
+  setTimerMinutes: (minutes: number) => void;
+  setSecondsLeft: (seconds: number) => void;
+  addSeconds: (seconds: number) => void;
 }
 
-const DEFAULT_TIMER: TimerState = {
-  durationSeconds: 20 * 60,
-  remainingSeconds: 20 * 60,
-  isRunning: false,
-  startedAt: null,
-};
+const TimerContext = createContext<TimerContextValue | null>(null);
 
-const STORAGE_KEY =
-  "teamcr7studio_timer";
+const STORAGE_KEY = "teamcr7studio_timer_state";
 
-const TimerContext =
-  createContext<TimerContextType>(
-    {} as TimerContextType
-  );
+const DEFAULT_DURATION_SECONDS = 20 * 60;
 
-function getSecondsLeft(timer: TimerState) {
-  if (!timer.isRunning || !timer.startedAt) {
-    return timer.remainingSeconds;
+function getDefaultState(): TimerState {
+  return {
+    durationSeconds: DEFAULT_DURATION_SECONDS,
+    baseSeconds: DEFAULT_DURATION_SECONDS,
+    startedAt: null,
+    isRunning: false,
+    updatedAt: Date.now(),
+  };
+}
+
+function clampSeconds(value: number) {
+  if (Number.isNaN(value)) return 0;
+
+  return Math.max(0, Math.round(value));
+}
+
+function readTimerState(): TimerState {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+
+    if (!raw) {
+      return getDefaultState();
+    }
+
+    const parsed = JSON.parse(raw) as Partial<TimerState>;
+
+    return {
+      durationSeconds:
+        typeof parsed.durationSeconds === "number"
+          ? clampSeconds(parsed.durationSeconds)
+          : DEFAULT_DURATION_SECONDS,
+
+      baseSeconds:
+        typeof parsed.baseSeconds === "number"
+          ? clampSeconds(parsed.baseSeconds)
+          : DEFAULT_DURATION_SECONDS,
+
+      startedAt:
+        typeof parsed.startedAt === "number"
+          ? parsed.startedAt
+          : null,
+
+      isRunning:
+        typeof parsed.isRunning === "boolean"
+          ? parsed.isRunning
+          : false,
+
+      updatedAt:
+        typeof parsed.updatedAt === "number"
+          ? parsed.updatedAt
+          : Date.now(),
+    };
+  } catch {
+    return getDefaultState();
+  }
+}
+
+function getComputedSecondsLeft(state: TimerState) {
+  if (!state.isRunning || !state.startedAt) {
+    return clampSeconds(state.baseSeconds);
   }
 
-  const elapsed = Math.floor(
-    (Date.now() - timer.startedAt) / 1000
+  const elapsedSeconds = Math.floor(
+    (Date.now() - state.startedAt) / 1000
   );
 
-  return Math.max(
-    0,
-    timer.remainingSeconds - elapsed
+  return clampSeconds(state.baseSeconds - elapsedSeconds);
+}
+
+function normalizeState(state: TimerState): TimerState {
+  const secondsLeft = getComputedSecondsLeft(state);
+
+  if (state.isRunning && secondsLeft <= 0) {
+    return {
+      ...state,
+      baseSeconds: 0,
+      startedAt: null,
+      isRunning: false,
+      updatedAt: Date.now(),
+    };
+  }
+
+  return state;
+}
+
+function saveTimerState(state: TimerState) {
+  const normalized = normalizeState(state);
+
+  localStorage.setItem(
+    STORAGE_KEY,
+    JSON.stringify(normalized)
   );
+
+  window.dispatchEvent(
+    new Event("teamcr7studio_timer_sync")
+  );
+
+  return normalized;
 }
 
 export function TimerProvider({
@@ -62,136 +145,218 @@ export function TimerProvider({
 }: {
   children: ReactNode;
 }) {
-  const [timer, setTimerState] =
-    useState<TimerState>(() =>
-      loadData<TimerState>(
-        "timer",
-        DEFAULT_TIMER
-      )
-    );
+  const [timerState, setTimerState] = useState<TimerState>(() =>
+    normalizeState(readTimerState())
+  );
 
-  const [secondsLeft, setSecondsLeft] =
-    useState(() => getSecondsLeft(timer));
+  const secondsLeft = getComputedSecondsLeft(timerState);
 
-  function updateTimer(next: TimerState) {
-    setTimerState(next);
-    setSecondsLeft(getSecondsLeft(next));
-    saveData("timer", next);
-  }
+  function updateTimerState(
+    updater: (current: TimerState) => TimerState
+  ) {
+    setTimerState((current) => {
+      const latest = normalizeState(readTimerState());
 
-  function setTimerDuration(seconds: number) {
-    const cleanSeconds = Math.max(
-      1,
-      Math.floor(seconds)
-    );
+      const next = saveTimerState(
+        updater(latest)
+      );
 
-    updateTimer({
-      durationSeconds: cleanSeconds,
-      remainingSeconds: cleanSeconds,
-      isRunning: false,
-      startedAt: null,
+      return next;
     });
   }
 
   function startTimer() {
-    const current = getSecondsLeft(timer);
+    updateTimerState((current) => {
+      const currentSeconds = getComputedSecondsLeft(current);
 
-    if (current <= 0) return;
-
-    updateTimer({
-      ...timer,
-      remainingSeconds: current,
-      isRunning: true,
-      startedAt: Date.now(),
+      return {
+        ...current,
+        baseSeconds:
+          currentSeconds > 0
+            ? currentSeconds
+            : current.durationSeconds,
+        startedAt: Date.now(),
+        isRunning: true,
+        updatedAt: Date.now(),
+      };
     });
   }
 
   function pauseTimer() {
-    const current = getSecondsLeft(timer);
+    updateTimerState((current) => {
+      const currentSeconds = getComputedSecondsLeft(current);
 
-    updateTimer({
-      ...timer,
-      remainingSeconds: current,
-      isRunning: false,
-      startedAt: null,
+      return {
+        ...current,
+        baseSeconds: currentSeconds,
+        startedAt: null,
+        isRunning: false,
+        updatedAt: Date.now(),
+      };
     });
   }
 
-  function resetTimer(seconds = timer.durationSeconds) {
-    updateTimer({
-      durationSeconds: seconds,
-      remainingSeconds: seconds,
-      isRunning: false,
-      startedAt: null,
+  function stopTimer() {
+    pauseTimer();
+  }
+
+  function resetTimer(seconds?: number) {
+    updateTimerState((current) => {
+      const nextSeconds =
+        typeof seconds === "number"
+          ? clampSeconds(seconds)
+          : current.durationSeconds;
+
+      return {
+        ...current,
+        durationSeconds: nextSeconds,
+        baseSeconds: nextSeconds,
+        startedAt: null,
+        isRunning: false,
+        updatedAt: Date.now(),
+      };
+    });
+  }
+
+  function restartTimer() {
+    updateTimerState((current) => {
+      return {
+        ...current,
+        baseSeconds: current.durationSeconds,
+        startedAt: Date.now(),
+        isRunning: true,
+        updatedAt: Date.now(),
+      };
+    });
+  }
+
+  function setDurationMinutes(minutes: number) {
+    const safeMinutes = Math.max(1, Math.round(minutes));
+
+    const nextSeconds = safeMinutes * 60;
+
+    resetTimer(nextSeconds);
+  }
+
+  function setTimerMinutes(minutes: number) {
+    setDurationMinutes(minutes);
+  }
+
+  function setSecondsLeft(seconds: number) {
+    updateTimerState((current) => {
+      return {
+        ...current,
+        baseSeconds: clampSeconds(seconds),
+        startedAt: current.isRunning ? Date.now() : null,
+        updatedAt: Date.now(),
+      };
+    });
+  }
+
+  function addSeconds(seconds: number) {
+    updateTimerState((current) => {
+      const currentSeconds = getComputedSecondsLeft(current);
+
+      return {
+        ...current,
+        baseSeconds: clampSeconds(currentSeconds + seconds),
+        startedAt: current.isRunning ? Date.now() : null,
+        updatedAt: Date.now(),
+      };
     });
   }
 
   useEffect(() => {
-    const interval = window.setInterval(() => {
-      const current = getSecondsLeft(timer);
-
-      setSecondsLeft(current);
-
-      if (timer.isRunning && current === 0) {
-        const stopped: TimerState = {
-          ...timer,
-          remainingSeconds: 0,
-          isRunning: false,
-          startedAt: null,
-        };
-
-        setTimerState(stopped);
-        saveData("timer", stopped);
-      }
-    }, 1000);
-
-    return () => {
-      window.clearInterval(interval);
-    };
-  }, [timer]);
-
-  useEffect(() => {
-    function handleStorage(event: StorageEvent) {
-      if (event.key !== STORAGE_KEY) return;
-
-      const updated = loadData<TimerState>(
-        "timer",
-        DEFAULT_TIMER
-      );
-
-      setTimerState(updated);
-      setSecondsLeft(getSecondsLeft(updated));
+    function syncTimer() {
+      setTimerState(normalizeState(readTimerState()));
     }
 
     window.addEventListener(
       "storage",
-      handleStorage
+      syncTimer
     );
+
+    window.addEventListener(
+      "focus",
+      syncTimer
+    );
+
+    window.addEventListener(
+      "teamcr7studio_timer_sync",
+      syncTimer
+    );
+
+    const interval = window.setInterval(() => {
+      const latest = normalizeState(readTimerState());
+
+      if (
+        latest.isRunning ||
+        timerState.isRunning
+      ) {
+        setTimerState(latest);
+      }
+    }, 250);
 
     return () => {
       window.removeEventListener(
         "storage",
-        handleStorage
+        syncTimer
       );
+
+      window.removeEventListener(
+        "focus",
+        syncTimer
+      );
+
+      window.removeEventListener(
+        "teamcr7studio_timer_sync",
+        syncTimer
+      );
+
+      window.clearInterval(interval);
     };
-  }, []);
+  }, [timerState.isRunning]);
+
+  const value = useMemo<TimerContextValue>(() => {
+    return {
+      secondsLeft,
+      durationSeconds: timerState.durationSeconds,
+      isRunning: timerState.isRunning,
+      timer: {
+        isRunning: timerState.isRunning,
+        durationSeconds: timerState.durationSeconds,
+      },
+      startTimer,
+      pauseTimer,
+      stopTimer,
+      resetTimer,
+      restartTimer,
+      setDurationMinutes,
+      setTimerMinutes,
+      setSecondsLeft,
+      addSeconds,
+    };
+  }, [
+    secondsLeft,
+    timerState.durationSeconds,
+    timerState.isRunning,
+  ]);
 
   return (
-    <TimerContext.Provider
-      value={{
-        timer,
-        secondsLeft,
-        setTimerDuration,
-        startTimer,
-        pauseTimer,
-        resetTimer,
-      }}
-    >
+    <TimerContext.Provider value={value}>
       {children}
     </TimerContext.Provider>
   );
 }
 
 export function useTimer() {
-  return useContext(TimerContext);
+  const context = useContext(TimerContext);
+
+  if (!context) {
+    throw new Error(
+      "useTimer debe usarse dentro de TimerProvider"
+    );
+  }
+
+  return context;
 }

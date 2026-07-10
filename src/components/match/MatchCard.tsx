@@ -1,11 +1,16 @@
 import type React from "react";
 import type { Match } from "../../types/match";
+import type { Team } from "../../types/team";
 
 interface Props {
   match: Match;
+  displayLabel?: string;
 }
 
-export default function MatchCard({ match }: Props) {
+export default function MatchCard({
+  match,
+  displayLabel,
+}: Props) {
   const finished =
     match.status === "FINISHED";
 
@@ -20,6 +25,10 @@ export default function MatchCard({ match }: Props) {
   const hasPenalties =
     match.penaltyA !== undefined &&
     match.penaltyB !== undefined;
+
+  const courtLabel =
+    match.courtLabel ??
+    `Cancha ${match.court || "-"}`;
 
   function teamLabel(
     team: typeof match.teamA,
@@ -78,11 +87,13 @@ export default function MatchCard({ match }: Props) {
         }}
       >
         <span>
-          <strong>Partido {match.id}</strong>
+          <strong>
+            {displayLabel ?? `Partido ${match.id}`}
+          </strong>
         </span>
 
         <span>
-          🕒 {match.time || "--:--"} | 🏟 Cancha {match.court || "-"}
+          🕒 {match.time || "--:--"} | 🏟 {courtLabel}
         </span>
       </div>
 
@@ -94,9 +105,13 @@ export default function MatchCard({ match }: Props) {
           alignItems: "center",
         }}
       >
-        <div style={teamName}>
-          {teamLabel(match.teamA, match.sourceMatchA)}
-        </div>
+        <TeamDisplay
+          team={match.teamA}
+          label={teamLabel(
+            match.teamA,
+            match.sourceMatchA
+          )}
+        />
 
         {hasScore && (
           <div style={scoreBox}>
@@ -104,9 +119,13 @@ export default function MatchCard({ match }: Props) {
           </div>
         )}
 
-        <div style={teamName}>
-          {teamLabel(match.teamB, match.sourceMatchB)}
-        </div>
+        <TeamDisplay
+          team={match.teamB}
+          label={teamLabel(
+            match.teamB,
+            match.sourceMatchB
+          )}
+        />
 
         {hasScore && (
           <div style={scoreBox}>
@@ -172,7 +191,7 @@ export default function MatchCard({ match }: Props) {
               fontWeight: "bold",
             }}
           >
-            🏆 Ganador: {match.winner?.name}
+            🏆 Ganador: {match.winner?.name ?? "Empate"}
           </span>
         )}
       </div>
@@ -180,9 +199,80 @@ export default function MatchCard({ match }: Props) {
   );
 }
 
+function TeamDisplay({
+  team,
+  label,
+}: {
+  team: Team | null;
+  label: string;
+}) {
+  return (
+    <div style={teamDisplay}>
+      <TeamLogo team={team} />
+
+      <div style={teamName}>
+        {label}
+      </div>
+    </div>
+  );
+}
+
+function TeamLogo({
+  team,
+}: {
+  team: Team | null;
+}) {
+  if (!team?.logoDataUrl) {
+    return (
+      <div style={emptyLogo}>
+        ⚽
+      </div>
+    );
+  }
+
+  return (
+    <img
+      src={team.logoDataUrl}
+      alt={team.name}
+      style={teamLogo}
+    />
+  );
+}
+
+const teamDisplay: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: 12,
+  minWidth: 0,
+};
+
+const teamLogo: React.CSSProperties = {
+  width: 42,
+  height: 42,
+  borderRadius: 10,
+  objectFit: "contain",
+  background: "#0f172a",
+  border: "1px solid #334155",
+  padding: 4,
+  flexShrink: 0,
+};
+
+const emptyLogo: React.CSSProperties = {
+  width: 42,
+  height: 42,
+  borderRadius: 10,
+  background: "#0f172a",
+  border: "1px solid #334155",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  flexShrink: 0,
+};
+
 const teamName: React.CSSProperties = {
   fontSize: 18,
   fontWeight: "bold",
+  wordBreak: "break-word",
 };
 
 const scoreBox: React.CSSProperties = {
