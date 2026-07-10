@@ -71,6 +71,47 @@ function escapeHtml(value: string) {
     .replaceAll("'", "&#039;");
 }
 
+function getWomenFieldLetter(index: number) {
+  const letters = ["A", "B", "C", "D"];
+
+  return letters[index - 1] ?? String(index);
+}
+
+function replaceOldCourtText(label: string) {
+  return label
+    .replaceAll("C. Mujer 1", "Campo A")
+    .replaceAll("C. Mujer 2", "Campo B")
+    .replaceAll("C. Mujer 3", "Campo C")
+    .replaceAll("C. Mujer 4", "Campo D")
+    .replaceAll("Cancha 1", "Campo 1")
+    .replaceAll("Cancha 2", "Campo 2")
+    .replaceAll("Cancha 3", "Campo 3")
+    .replaceAll("Cancha 4", "Campo 4")
+    .replaceAll("cancha", "campo")
+    .replaceAll("Cancha", "Campo")
+    .replaceAll("canchas", "campos")
+    .replaceAll("Canchas", "Campos");
+}
+
+function getFieldLabel(match: Match) {
+  if (match.courtLabel) {
+    return replaceOldCourtText(match.courtLabel);
+  }
+
+  if (match.category === "WOMEN") {
+    return `Campo ${getWomenFieldLetter(match.court || 1)}`;
+  }
+
+  return `Campo ${match.court || 1}`;
+}
+
+function getDisplayMatch(match: Match): Match {
+  return {
+    ...match,
+    courtLabel: getFieldLabel(match),
+  };
+}
+
 function getCategoryLabel(
   category: VenueCategory
 ) {
@@ -112,7 +153,7 @@ function getRoundTitle(
   }
 
   const hasFinal = matches.some((match) =>
-    (match.courtLabel ?? "")
+    getFieldLabel(match)
       .toUpperCase()
       .includes("FINAL")
   );
@@ -177,9 +218,7 @@ function groupByVenue(
   const map = new Map<string, VenueGroup>();
 
   matches.forEach((match) => {
-    const label =
-      match.courtLabel ??
-      `Cancha ${match.court || 1}`;
+    const label = getFieldLabel(match);
 
     const category: VenueCategory =
       match.category ?? "GENERAL";
@@ -850,12 +889,12 @@ export default function ResultsView() {
           />
 
           <InfoBox
-            label="Canchas Varones"
+            label="Campos Varones"
             value={tournament?.courts ?? 0}
           />
 
           <InfoBox
-            label="Canchas Mujeres"
+            label="Campos Mujeres"
             value={tournament?.womenCourts ?? 0}
           />
         </div>
@@ -989,7 +1028,7 @@ export default function ResultsView() {
                       (match, index) => (
                         <ResultCard
                           key={match.id}
-                          match={match}
+                          match={getDisplayMatch(match)}
                           displayLabel={`Partido ${
                             index + 1
                           }`}
@@ -1002,7 +1041,7 @@ export default function ResultsView() {
                             setActiveMatchId(match.id)
                           }
                           onGoals={() =>
-                            setGoalMatch(match)
+                            setGoalMatch(getDisplayMatch(match))
                           }
                         />
                       )
@@ -1088,9 +1127,8 @@ function ResultCard({
     !isGroupMatch &&
     match.scoreA === match.scoreB;
 
-  const courtLabel =
-    match.courtLabel ??
-    `Cancha ${match.court || 1}`;
+  const fieldLabel =
+    getFieldLabel(match);
 
   return (
     <div style={resultCard}>
@@ -1108,7 +1146,7 @@ function ResultCard({
         <strong>{displayLabel}</strong>
 
         <span>
-          🕒 {match.time || "--:--"} | 🏟 {courtLabel}
+          🕒 {match.time || "--:--"} | 🏟 {fieldLabel}
         </span>
       </div>
 
@@ -1384,9 +1422,8 @@ function GoalScorersModal({
       return data;
     });
 
-  const courtLabel =
-    match.courtLabel ??
-    `Cancha ${match.court || 1}`;
+  const fieldLabel =
+    getFieldLabel(match);
 
   const totalA =
     teamAPlayers.reduce(
@@ -1437,7 +1474,7 @@ function GoalScorersModal({
 
           category: player.category,
 
-          courtLabel,
+          courtLabel: fieldLabel,
 
           goals,
         });
@@ -1509,7 +1546,7 @@ function GoalScorersModal({
                 marginBottom: 0,
               }}
             >
-              Partido {match.id} | {courtLabel} | {match.time || "--:--"}
+              Partido {match.id} | {fieldLabel} | {match.time || "--:--"}
             </p>
           </div>
 
