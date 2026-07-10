@@ -29,7 +29,8 @@ const OVERLAY_MODE_STORAGE_KEY =
 
 type OverlayMode =
   | "SINGLE"
-  | "MULTI";
+  | "MULTI"
+  | "BRACKET";
 
 function createId() {
   if (crypto.randomUUID) {
@@ -79,6 +80,8 @@ function readStoredOverlayMode(): OverlayMode {
   );
 
   if (value === "MULTI") return "MULTI";
+
+  if (value === "BRACKET") return "BRACKET";
 
   return "SINGLE";
 }
@@ -641,7 +644,13 @@ export default function OverlayView() {
           : "hidden",
       }}
     >
-      {overlayMode === "MULTI" ? (
+      {overlayMode === "BRACKET" ? (
+        <BracketOverlay
+          tournamentName={tournament?.name ?? "TEAMCR7STUDIO"}
+          fixture={fixture}
+          teamMap={teamMap}
+        />
+      ) : overlayMode === "MULTI" ? (
         <MultiCourtOverlay
           tournamentName={tournament?.name ?? "TEAMCR7STUDIO"}
           matches={simultaneousMatches}
@@ -1304,6 +1313,364 @@ function SponsorPlaceholder({
   );
 }
 
+
+function BracketOverlay({
+  tournamentName,
+  fixture,
+  teamMap,
+}: {
+  tournamentName: string;
+  fixture: Match[];
+  teamMap: Map<number, Team>;
+}) {
+  const menMatches = fixture.filter(
+    (match) =>
+      match.stage !== "GROUP" &&
+      match.category !== "WOMEN"
+  );
+
+  const womenMatches = fixture.filter(
+    (match) =>
+      match.stage !== "GROUP" &&
+      match.category === "WOMEN"
+  );
+
+  const hasWomen = womenMatches.length > 0;
+
+  return (
+    <section style={bracketOverlayShellStyle}>
+      <OverlayHeader tournamentName={tournamentName} />
+
+      <section style={bracketTitleBoxStyle}>
+        <div>
+          <div style={bracketSmallTitleStyle}>
+            MODO PAUSA / FIXTURE
+          </div>
+
+          <h1 style={bracketMainTitleStyle}>
+            LLAVE DEL CAMPEONATO
+          </h1>
+
+          <p style={bracketSubtitleStyle}>
+            16avos → 8vos → Cuartos → Semifinal → Final
+          </p>
+        </div>
+
+        <div style={bracketBrandPillStyle}>
+          #TEAMCR7STUDIO
+        </div>
+      </section>
+
+      <section
+        style={{
+          ...bracketCategoriesStyle,
+          gridTemplateColumns: hasWomen ? "1fr 1fr" : "1fr",
+        }}
+      >
+        <BracketCategory
+          title="VARONES"
+          color="#38bdf8"
+          matches={menMatches}
+          teamMap={teamMap}
+        />
+
+        {hasWomen && (
+          <BracketCategory
+            title="MUJERES"
+            color="#f9a8d4"
+            matches={womenMatches}
+            teamMap={teamMap}
+          />
+        )}
+      </section>
+
+      <SponsorStrip />
+    </section>
+  );
+}
+
+function BracketCategory({
+  title,
+  color,
+  matches,
+  teamMap,
+}: {
+  title: string;
+  color: string;
+  matches: Match[];
+  teamMap: Map<number, Team>;
+}) {
+  const rounds = getBracketRounds(matches);
+
+  return (
+    <section
+      style={{
+        ...bracketCategoryBoxStyle,
+        borderColor: color,
+      }}
+    >
+      <div style={bracketCategoryHeaderStyle}>
+        <div>
+          <div
+            style={{
+              ...bracketCategoryLabelStyle,
+              color,
+            }}
+          >
+            CATEGORÍA
+          </div>
+
+          <h2 style={bracketCategoryTitleStyle}>
+            {title}
+          </h2>
+        </div>
+
+        <div
+          style={{
+            ...bracketCountBadgeStyle,
+            borderColor: color,
+            color,
+          }}
+        >
+          {matches.length} partido(s)
+        </div>
+      </div>
+
+      {rounds.length === 0 ? (
+        <div style={bracketEmptyStyle}>
+          Todavía no hay llave generada para esta categoría.
+        </div>
+      ) : (
+        <div style={bracketRoundsStyle}>
+          {rounds.map((round) => (
+            <div
+              key={round.round}
+              style={bracketRoundColumnStyle}
+            >
+              <div
+                style={{
+                  ...bracketRoundTitleStyle,
+                  color,
+                }}
+              >
+                {round.title}
+              </div>
+
+              <div style={bracketMatchListStyle}>
+                {round.matches.map((match) => (
+                  <BracketMatchCard
+                    key={match.id}
+                    match={match}
+                    teamMap={teamMap}
+                    color={color}
+                  />
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function getBracketRounds(matches: Match[]) {
+  const map = new Map<number, Match[]>();
+
+  matches.forEach((match) => {
+    const round = match.round ?? 1;
+
+    if (!map.has(round)) {
+      map.set(round, []);
+    }
+
+    map.get(round)!.push(match);
+  });
+
+  return Array.from(map.entries())
+    .sort((a, b) => a[0] - b[0])
+    .map(([round, list]) => {
+      const sorted = [...list].sort((a, b) => {
+        if ((a.court ?? 0) !== (b.court ?? 0)) {
+          return (a.court ?? 0) - (b.court ?? 0);
+        }
+
+        if (a.time !== b.time) {
+          return a.time.localeCompare(b.time);
+        }
+
+        return a.id - b.id;
+      });
+
+      return {
+        round,
+        title: getBracketRoundTitle(sorted, round),
+        matches: sorted,
+      };
+    });
+}
+
+function getBracketRoundTitle(
+  matches: Match[],
+  round: number
+) {
+  const firstMatch = matches[0];
+
+  if (
+    (firstMatch?.courtLabel ?? "")
+      .toUpperCase()
+      .includes("FINAL")
+  ) {
+    return "FINAL";
+  }
+
+  if (matches.length >= 16) return "16AVOS";
+
+  if (matches.length === 8) return "8VOS";
+
+  if (matches.length === 4) return "CUARTOS";
+
+  if (matches.length === 2) return "SEMIFINAL";
+
+  if (matches.length === 1) return "FINAL";
+
+  return `RONDA ${round}`;
+}
+
+function BracketMatchCard({
+  match,
+  teamMap,
+  color,
+}: {
+  match: Match;
+  teamMap: Map<number, Team>;
+  color: string;
+}) {
+  const teamA = getTeamWithLogo(
+    match.teamA,
+    teamMap
+  );
+
+  const teamB = getTeamWithLogo(
+    match.teamB,
+    teamMap
+  );
+
+  const teamAName = getTeamName(
+    teamA,
+    match.sourceMatchA
+      ? `Ganador P${match.sourceMatchA}`
+      : "Por definir"
+  );
+
+  const teamBName = getTeamName(
+    teamB,
+    match.sourceMatchB
+      ? `Ganador P${match.sourceMatchB}`
+      : "Por definir"
+  );
+
+  return (
+    <article style={bracketMatchCardStyle}>
+      <div style={bracketMatchMetaStyle}>
+        <span>Partido {match.id}</span>
+        <span>{getCourtLabel(match)}</span>
+      </div>
+
+      <BracketTeamRow
+        team={teamA}
+        name={teamAName}
+        score={match.scoreA}
+        isWinner={match.winner?.id === teamA?.id}
+        color={color}
+      />
+
+      <BracketTeamRow
+        team={teamB}
+        name={teamBName}
+        score={match.scoreB}
+        isWinner={match.winner?.id === teamB?.id}
+        color={color}
+      />
+
+      {match.winner && (
+        <div
+          style={{
+            ...bracketWinnerStyle,
+            borderColor: color,
+          }}
+        >
+          Avanza: {match.winner.name}
+        </div>
+      )}
+    </article>
+  );
+}
+
+
+function BracketSmallLogo({
+  team,
+}: {
+  team: Team | null;
+}) {
+  if (!team?.logoDataUrl) {
+    return (
+      <div style={bracketSmallLogoEmptyStyle}>
+        ⚽
+      </div>
+    );
+  }
+
+  return (
+    <img
+      src={team.logoDataUrl}
+      alt={team.name}
+      style={bracketSmallLogoStyle}
+    />
+  );
+}
+
+function BracketTeamRow({
+  team,
+  name,
+  score,
+  isWinner,
+  color,
+}: {
+  team: Team | null;
+  name: string;
+  score: number;
+  isWinner: boolean;
+  color: string;
+}) {
+  return (
+    <div
+      style={{
+        ...bracketTeamRowStyle,
+        borderColor: isWinner ? color : "#334155",
+        background: isWinner
+          ? "rgba(22, 163, 74, 0.18)"
+          : "#020617",
+      }}
+    >
+      <BracketSmallLogo team={team} />
+
+      <div style={bracketTeamNameStyle}>
+        {name}
+      </div>
+
+      <div
+        style={{
+          ...bracketScoreStyle,
+          color: isWinner ? color : "#f8fafc",
+        }}
+      >
+        {score}
+      </div>
+    </div>
+  );
+}
+
 function ControlPanel({
   fixture,
   selectedMatch,
@@ -1394,218 +1761,244 @@ function ControlPanel({
 
   return (
     <section style={controlPanelStyle}>
-      <div style={controlHeaderStyle}>
-        <div>
-          <div style={controlLabelStyle}>
-            PANEL CONTROL OBS
-          </div>
+      <div style={controlLayoutStyle}>
+        <aside style={controlSidebarStyle}>
+          <div style={controlSidebarHeaderStyle}>
+            <div>
+              <div style={controlLabelStyle}>
+                PANEL CONTROL OBS
+              </div>
 
-          <div style={controlTimeStyle}>
-            {formatTime(secondsLeft)}
-          </div>
+              <div style={controlTimeStyle}>
+                {formatTime(secondsLeft)}
+              </div>
 
-          <div style={controlSubTextStyle}>
-            Duración: {Math.round(durationSeconds / 60)} min |{" "}
-            {isRunning ? "EN VIVO" : "PAUSADO"}
-          </div>
-        </div>
+              <div style={controlSubTextStyle}>
+                Duración: {Math.round(durationSeconds / 60)} min
+              </div>
+            </div>
 
-        <div
-          style={{
-            ...statusPillStyle,
-            background: isRunning ? "#064e3b" : "#713f12",
-            borderColor: isRunning ? "#22c55e" : "#facc15",
-            color: isRunning ? "#bbf7d0" : "#fef3c7",
-          }}
-        >
-          {isRunning ? "EN VIVO" : "PAUSADO"}
-        </div>
-      </div>
-
-      <div style={controlGridStyle}>
-        <div style={controlBlockStyle}>
-          <h3 style={controlBlockTitleStyle}>
-            🎛 Tipo de Overlay
-          </h3>
-
-          <div style={modeButtonsStyle}>
-            <button
-              onClick={() => setOverlayMode("SINGLE")}
-              style={
-                overlayMode === "SINGLE"
-                  ? activeModeButtonStyle
-                  : grayButtonStyle
-              }
+            <div
+              style={{
+                ...statusPillStyle,
+                background: isRunning ? "#064e3b" : "#713f12",
+                borderColor: isRunning ? "#22c55e" : "#facc15",
+                color: isRunning ? "#bbf7d0" : "#fef3c7",
+              }}
             >
-              Marcador Principal
-            </button>
-
-            <button
-              onClick={() => setOverlayMode("MULTI")}
-              style={
-                overlayMode === "MULTI"
-                  ? activeModeButtonStyle
-                  : grayButtonStyle
-              }
-            >
-              Multicancha
-            </button>
+              {isRunning ? "EN VIVO" : "PAUSADO"}
+            </div>
           </div>
 
-          <div style={modeInfoStyle}>
-            {overlayMode === "MULTI"
-              ? `Mostrando ${simultaneousCount} partido(s) de las ${simultaneousTime}`
-              : "Mostrando solo el partido seleccionado"}
-          </div>
-        </div>
+          <div style={sidebarBlocksStyle}>
+            <div style={controlBlockStyle}>
+              <h3 style={controlBlockTitleStyle}>
+                🎛 Tipo de Overlay
+              </h3>
 
-        <div style={controlBlockStyle}>
-          <h3 style={controlBlockTitleStyle}>
-            📺 Partido base
-          </h3>
+              <div style={modeButtonsStyle}>
+                <button
+                  onClick={() => setOverlayMode("SINGLE")}
+                  style={
+                    overlayMode === "SINGLE"
+                      ? activeModeButtonStyle
+                      : grayButtonStyle
+                  }
+                >
+                  Marcador Principal
+                </button>
 
-          <select
-            value={selectedMatchId ?? selectedMatch?.id ?? ""}
-            onChange={(event) => {
-              const value = event.target.value;
+                <button
+                  onClick={() => setOverlayMode("MULTI")}
+                  style={
+                    overlayMode === "MULTI"
+                      ? activeModeButtonStyle
+                      : grayButtonStyle
+                  }
+                >
+                  Multicancha
+                </button>
 
-              if (!value) return;
+                <button
+                  onClick={() => setOverlayMode("BRACKET")}
+                  style={
+                    overlayMode === "BRACKET"
+                      ? activeModeButtonStyle
+                      : grayButtonStyle
+                  }
+                >
+                  Llave / Fixture
+                </button>
+              </div>
 
-              selectMatch(Number(value));
-            }}
-            style={selectStyle}
-          >
-            <option value="">
-              Seleccionar partido
-            </option>
+              <div style={modeInfoStyle}>
+                {overlayMode === "MULTI"
+                  ? `Mostrando ${simultaneousCount} partido(s) de las ${simultaneousTime}`
+                  : overlayMode === "BRACKET"
+                  ? "Mostrando llave / fixture para pausas"
+                  : "Mostrando solo el partido seleccionado"}
+              </div>
+            </div>
 
-            {matchOptions.map((match) => (
-              <option
-                key={match.id}
-                value={match.id}
+            <div style={controlBlockStyle}>
+              <h3 style={controlBlockTitleStyle}>
+                📺 Partido base
+              </h3>
+
+              <select
+                value={selectedMatchId ?? selectedMatch?.id ?? ""}
+                onChange={(event) => {
+                  const value = event.target.value;
+
+                  if (!value) return;
+
+                  selectMatch(Number(value));
+                }}
+                style={selectStyle}
               >
-                {getMatchLabel(match)}
-              </option>
-            ))}
-          </select>
+                <option value="">
+                  Seleccionar partido
+                </option>
 
-          <div style={smallButtonsGridStyle}>
-            <button
-              onClick={selectNextMatch}
-              style={blueButtonStyle}
-            >
-              Siguiente pendiente
-            </button>
+                {matchOptions.map((match) => (
+                  <option
+                    key={match.id}
+                    value={match.id}
+                  >
+                    {getMatchLabel(match)}
+                  </option>
+                ))}
+              </select>
 
-            <button
-              onClick={clearOverlayMatch}
-              style={redButtonStyle}
-            >
-              Limpiar OBS
-            </button>
+              <div style={smallButtonsGridStyle}>
+                <button
+                  onClick={selectNextMatch}
+                  style={blueButtonStyle}
+                >
+                  Siguiente pendiente
+                </button>
+
+                <button
+                  onClick={clearOverlayMatch}
+                  style={redButtonStyle}
+                >
+                  Limpiar OBS
+                </button>
+              </div>
+            </div>
+
+            <div style={controlBlockStyle}>
+              <h3 style={controlBlockTitleStyle}>
+                ⏱ Cronómetro
+              </h3>
+
+              <div style={smallButtonsGridStyle}>
+                <button
+                  onClick={startTimer}
+                  style={greenButtonStyle}
+                >
+                  ▶ Iniciar
+                </button>
+
+                <button
+                  onClick={pauseTimer}
+                  style={orangeButtonStyle}
+                >
+                  ⏸ Pausar
+                </button>
+
+                <button
+                  onClick={() => resetTimer()}
+                  style={grayButtonStyle}
+                >
+                  ↺ Reiniciar
+                </button>
+
+                <button
+                  onClick={startSelectedMatch}
+                  style={purpleButtonStyle}
+                >
+                  🔁 Iniciar partido
+                </button>
+
+                <button
+                  onClick={() => addSeconds(60)}
+                  style={grayButtonStyle}
+                >
+                  +1 min
+                </button>
+
+                <button
+                  onClick={() => addSeconds(-60)}
+                  style={grayButtonStyle}
+                >
+                  -1 min
+                </button>
+              </div>
+
+              <div style={minutesRowStyle}>
+                <input
+                  type="number"
+                  min={1}
+                  value={minutesInput}
+                  onChange={(event) =>
+                    setMinutesInput(Number(event.target.value))
+                  }
+                  style={minutesInputStyle}
+                />
+
+                <button
+                  onClick={applyMinutes}
+                  style={blueButtonStyle}
+                >
+                  Aplicar minutos
+                </button>
+              </div>
+            </div>
+          </div>
+        </aside>
+
+        <div style={controlMainAreaStyle}>
+          <div style={simultaneousControlBoxStyle}>
+            <div style={simultaneousControlHeaderStyle}>
+              <div>
+                <h3 style={controlBlockTitleStyle}>
+                  ⚽ Control de marcadores simultáneos
+                </h3>
+
+                <div style={modeInfoStyle}>
+                  Controlando {controlledMatches.length} partido(s) del horario{" "}
+                  {simultaneousTime || "--:--"}.
+                </div>
+              </div>
+
+              <div style={simultaneousBadgeStyle}>
+                {controlledMatches.length} cancha(s)
+              </div>
+            </div>
+
+            {controlledMatches.length === 0 ? (
+              <div style={emptyControlStyle}>
+                Selecciona un partido para mostrar sus controles.
+              </div>
+            ) : (
+              <div style={simultaneousCardsGridStyle}>
+                {controlledMatches.map((match) => (
+                  <SimultaneousScoreCard
+                    key={match.id}
+                    match={match}
+                    isMain={selectedMatchId === match.id}
+                    selectMatch={selectMatch}
+                    updateMatchNumber={updateMatchNumber}
+                    adjustScore={adjustScore}
+                    saveResult={saveResult}
+                    openGoalScorers={openGoalScorers}
+                  />
+                ))}
+              </div>
+            )}
           </div>
         </div>
-
-        <div style={controlBlockStyle}>
-          <h3 style={controlBlockTitleStyle}>
-            ⏱ Cronómetro
-          </h3>
-
-          <div style={smallButtonsGridStyle}>
-            <button
-              onClick={startTimer}
-              style={greenButtonStyle}
-            >
-              ▶ Iniciar
-            </button>
-
-            <button
-              onClick={pauseTimer}
-              style={orangeButtonStyle}
-            >
-              ⏸ Pausar
-            </button>
-
-            <button
-              onClick={() => resetTimer()}
-              style={grayButtonStyle}
-            >
-              ↺ Reiniciar
-            </button>
-
-            <button
-              onClick={startSelectedMatch}
-              style={purpleButtonStyle}
-            >
-              🔁 Iniciar partido
-            </button>
-
-            <button
-              onClick={() => addSeconds(60)}
-              style={grayButtonStyle}
-            >
-              +1 min
-            </button>
-
-            <button
-              onClick={() => addSeconds(-60)}
-              style={grayButtonStyle}
-            >
-              -1 min
-            </button>
-          </div>
-
-          <div style={minutesRowStyle}>
-            <input
-              type="number"
-              min={1}
-              value={minutesInput}
-              onChange={(event) =>
-                setMinutesInput(Number(event.target.value))
-              }
-              style={minutesInputStyle}
-            />
-
-            <button
-              onClick={applyMinutes}
-              style={blueButtonStyle}
-            >
-              Aplicar minutos
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <div style={simultaneousControlBoxStyle}>
-        <h3 style={controlBlockTitleStyle}>
-          ⚽ Control de marcadores simultáneos
-        </h3>
-
-        <div style={modeInfoStyle}>
-          Controlando {controlledMatches.length} partido(s) del horario{" "}
-          {simultaneousTime || "--:--"}.
-        </div>
-
-        {controlledMatches.length === 0 ? (
-          <div style={emptyControlStyle}>
-            Selecciona un partido para mostrar sus controles.
-          </div>
-        ) : (
-          <div style={simultaneousCardsGridStyle}>
-            {controlledMatches.map((match) => (
-              <SimultaneousScoreCard
-                key={match.id}
-                match={match}
-                isMain={selectedMatchId === match.id}
-                selectMatch={selectMatch}
-                updateMatchNumber={updateMatchNumber}
-                adjustScore={adjustScore}
-                saveResult={saveResult}
-                openGoalScorers={openGoalScorers}
-              />
-            ))}
-          </div>
-        )}
       </div>
 
       <div style={controlHelpStyle}>
@@ -2800,17 +3193,271 @@ const multiBottomBarStyle: CSSProperties = {
   overflow: "hidden",
 };
 
+
+/* ===================== OVERLAY LLAVE ===================== */
+
+const bracketOverlayShellStyle: CSSProperties = {
+  width: "100%",
+  maxWidth: 1500,
+  minHeight: 820,
+  position: "relative",
+  borderRadius: 10,
+  overflow: "hidden",
+};
+
+const bracketTitleBoxStyle: CSSProperties = {
+  margin: "34px auto 20px",
+  width: "92%",
+  display: "flex",
+  justifyContent: "space-between",
+  gap: 24,
+  alignItems: "center",
+  background:
+    "linear-gradient(135deg, rgba(15,23,42,.98), rgba(2,6,23,.92))",
+  border: "2px solid rgba(14,165,233,.75)",
+  borderRadius: 18,
+  padding: "22px 30px",
+  boxShadow: "0 0 30px rgba(14,165,233,.32)",
+};
+
+const bracketSmallTitleStyle: CSSProperties = {
+  color: "#facc15",
+  fontSize: 14,
+  fontWeight: 1000,
+  letterSpacing: 2,
+};
+
+const bracketMainTitleStyle: CSSProperties = {
+  margin: "6px 0",
+  fontSize: 42,
+  fontWeight: 1000,
+  lineHeight: 1,
+};
+
+const bracketSubtitleStyle: CSSProperties = {
+  margin: 0,
+  color: "#cbd5e1",
+  fontSize: 18,
+};
+
+const bracketBrandPillStyle: CSSProperties = {
+  background: "#020617",
+  border: "1px solid #0ea5e9",
+  borderRadius: 999,
+  padding: "14px 22px",
+  color: "#22d3ee",
+  fontWeight: 1000,
+  letterSpacing: 1,
+};
+
+const bracketCategoriesStyle: CSSProperties = {
+  width: "92%",
+  margin: "0 auto",
+  display: "grid",
+  gap: 20,
+  alignItems: "start",
+};
+
+const bracketCategoryBoxStyle: CSSProperties = {
+  background:
+    "linear-gradient(180deg, rgba(15,23,42,.98), rgba(2,6,23,.98))",
+  border: "2px solid #38bdf8",
+  borderRadius: 18,
+  padding: 18,
+  boxShadow:
+    "0 18px 45px rgba(0,0,0,.38), inset 0 0 22px rgba(14,165,233,.14)",
+  minHeight: 430,
+};
+
+const bracketCategoryHeaderStyle: CSSProperties = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: 16,
+  marginBottom: 16,
+};
+
+const bracketCategoryLabelStyle: CSSProperties = {
+  fontSize: 12,
+  fontWeight: 1000,
+  letterSpacing: 2,
+};
+
+const bracketCategoryTitleStyle: CSSProperties = {
+  margin: "4px 0 0",
+  fontSize: 30,
+  fontWeight: 1000,
+};
+
+const bracketCountBadgeStyle: CSSProperties = {
+  border: "1px solid",
+  borderRadius: 999,
+  padding: "8px 12px",
+  fontWeight: 1000,
+  background: "#020617",
+};
+
+const bracketRoundsStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns:
+    "repeat(auto-fit, minmax(210px, 1fr))",
+  gap: 14,
+  alignItems: "start",
+};
+
+const bracketRoundColumnStyle: CSSProperties = {
+  display: "grid",
+  gap: 10,
+};
+
+const bracketRoundTitleStyle: CSSProperties = {
+  background: "#020617",
+  border: "1px solid #334155",
+  borderRadius: 10,
+  padding: "10px 12px",
+  textAlign: "center",
+  fontWeight: 1000,
+  letterSpacing: 1,
+};
+
+const bracketMatchListStyle: CSSProperties = {
+  display: "grid",
+  gap: 10,
+};
+
+const bracketMatchCardStyle: CSSProperties = {
+  background: "#0f172a",
+  border: "1px solid #334155",
+  borderRadius: 12,
+  padding: 10,
+};
+
+const bracketMatchMetaStyle: CSSProperties = {
+  display: "flex",
+  justifyContent: "space-between",
+  gap: 8,
+  color: "#94a3b8",
+  fontSize: 11,
+  fontWeight: 800,
+  marginBottom: 8,
+};
+
+const bracketSmallLogoStyle: CSSProperties = {
+  width: 34,
+  height: 34,
+  objectFit: "contain",
+  background: "#020617",
+  border: "1px solid #334155",
+  borderRadius: 8,
+  padding: 3,
+};
+
+const bracketSmallLogoEmptyStyle: CSSProperties = {
+  width: 34,
+  height: 34,
+  background: "#020617",
+  border: "1px solid #334155",
+  borderRadius: 8,
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  fontSize: 16,
+};
+
+const bracketTeamRowStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "36px 1fr 34px",
+  gap: 8,
+  alignItems: "center",
+  border: "1px solid #334155",
+  borderRadius: 10,
+  padding: 8,
+  marginBottom: 6,
+};
+
+const bracketTeamNameStyle: CSSProperties = {
+  minWidth: 0,
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  whiteSpace: "nowrap",
+  fontWeight: 1000,
+  textTransform: "uppercase",
+  fontSize: 13,
+};
+
+const bracketScoreStyle: CSSProperties = {
+  textAlign: "center",
+  fontSize: 18,
+  fontWeight: 1000,
+};
+
+const bracketWinnerStyle: CSSProperties = {
+  marginTop: 8,
+  background: "rgba(6,78,59,.55)",
+  border: "1px solid",
+  borderRadius: 8,
+  padding: 8,
+  color: "#bbf7d0",
+  fontSize: 12,
+  fontWeight: 1000,
+  textAlign: "center",
+};
+
+const bracketEmptyStyle: CSSProperties = {
+  background: "#020617",
+  border: "1px solid #334155",
+  borderRadius: 12,
+  padding: 20,
+  color: "#94a3b8",
+  textAlign: "center",
+};
+
 /* ===================== PANEL CONTROL ===================== */
 
 const controlPanelStyle: CSSProperties = {
   width: "100%",
-  maxWidth: 1180,
+  maxWidth: 1500,
   marginTop: 24,
   background: "rgba(15, 23, 42, 0.97)",
   border: "1px solid #475569",
   borderRadius: 20,
-  padding: 20,
+  padding: 18,
   boxShadow: "0 20px 55px rgba(0,0,0,.35)",
+};
+
+const controlLayoutStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "350px minmax(0, 1fr)",
+  gap: 18,
+  alignItems: "start",
+};
+
+const controlSidebarStyle: CSSProperties = {
+  display: "grid",
+  gap: 14,
+  position: "sticky",
+  top: 14,
+  alignSelf: "start",
+};
+
+const controlSidebarHeaderStyle: CSSProperties = {
+  background: "#020617",
+  border: "1px solid #334155",
+  borderRadius: 14,
+  padding: 16,
+  display: "flex",
+  justifyContent: "space-between",
+  gap: 12,
+  alignItems: "flex-start",
+};
+
+const sidebarBlocksStyle: CSSProperties = {
+  display: "grid",
+  gap: 14,
+};
+
+const controlMainAreaStyle: CSSProperties = {
+  minWidth: 0,
 };
 
 const controlHeaderStyle: CSSProperties = {
@@ -2848,7 +3495,7 @@ const controlLabelStyle: CSSProperties = {
 };
 
 const controlTimeStyle: CSSProperties = {
-  fontSize: 50,
+  fontSize: 44,
   fontWeight: 1000,
   color: "#60a5fa",
   lineHeight: 1,
@@ -2863,14 +3510,15 @@ const controlSubTextStyle: CSSProperties = {
 const statusPillStyle: CSSProperties = {
   border: "1px solid",
   borderRadius: 999,
-  padding: "8px 16px",
-  fontSize: 13,
+  padding: "8px 12px",
+  fontSize: 12,
   fontWeight: 900,
+  whiteSpace: "nowrap",
 };
 
 const modeButtonsStyle: CSSProperties = {
   display: "grid",
-  gridTemplateColumns: "1fr 1fr",
+  gridTemplateColumns: "1fr",
   gap: 10,
 };
 
@@ -2907,14 +3555,14 @@ const selectStyle: CSSProperties = {
 const smallButtonsGridStyle: CSSProperties = {
   display: "grid",
   gridTemplateColumns:
-    "repeat(auto-fit, minmax(120px, 1fr))",
+    "repeat(auto-fit, minmax(110px, 1fr))",
   gap: 10,
   marginTop: 12,
 };
 
 const minutesRowStyle: CSSProperties = {
   display: "grid",
-  gridTemplateColumns: "100px 1fr",
+  gridTemplateColumns: "90px 1fr",
   gap: 10,
   marginTop: 12,
 };
@@ -2982,13 +3630,30 @@ const simultaneousControlBoxStyle: CSSProperties = {
   border: "1px solid #334155",
   borderRadius: 14,
   padding: 16,
-  marginTop: 16,
+  marginTop: 0,
+};
+
+const simultaneousControlHeaderStyle: CSSProperties = {
+  display: "flex",
+  justifyContent: "space-between",
+  gap: 16,
+  alignItems: "flex-start",
+  marginBottom: 14,
+};
+
+const simultaneousBadgeStyle: CSSProperties = {
+  background: "#0ea5e9",
+  color: "white",
+  borderRadius: 999,
+  padding: "8px 14px",
+  fontWeight: 900,
+  whiteSpace: "nowrap",
 };
 
 const simultaneousCardsGridStyle: CSSProperties = {
   display: "grid",
   gridTemplateColumns:
-    "repeat(auto-fit, minmax(320px, 1fr))",
+    "repeat(auto-fit, minmax(300px, 1fr))",
   gap: 14,
   marginTop: 14,
 };
