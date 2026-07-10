@@ -14,7 +14,8 @@ import { useOverlay } from "../../store/overlayStore";
 import { useTimer } from "../../store/timerStore";
 import { useTeams } from "../../store/teamStore";
 
-const STORAGE_KEY = "teamcr7studio_active_match_id";
+const ACTIVE_MATCH_STORAGE_KEY =
+  "teamcr7studio_active_match_id";
 
 function formatTime(seconds: number) {
   const safeSeconds = Math.max(0, seconds);
@@ -31,7 +32,9 @@ function formatTime(seconds: number) {
 }
 
 function readStoredActiveMatchId() {
-  const value = localStorage.getItem(STORAGE_KEY);
+  const value = localStorage.getItem(
+    ACTIVE_MATCH_STORAGE_KEY
+  );
 
   if (!value) return null;
 
@@ -77,12 +80,19 @@ function getTeamName(
   return team?.name ?? fallback;
 }
 
-function getStatusText(match: Match) {
+function getStatusText(
+  match: Match,
+  isRunning: boolean
+) {
   if (match.status === "FINISHED") {
     return `GANADOR: ${match.winner?.name ?? "PENDIENTE"}`;
   }
 
-  return "PARTIDO EN VIVO";
+  if (isRunning) {
+    return "PARTIDO EN VIVO";
+  }
+
+  return "CRONÓMETRO PAUSADO";
 }
 
 export default function OverlayView() {
@@ -92,26 +102,74 @@ export default function OverlayView() {
 
   const { activeMatchId } = useOverlay();
 
-  const { secondsLeft } = useTimer();
+  const {
+    secondsLeft,
+    durationSeconds,
+    isRunning,
+    startTimer,
+    pauseTimer,
+    resetTimer,
+    restartTimer,
+    setDurationMinutes,
+    addSeconds,
+  } = useTimer();
 
   const { teams } = useTeams();
 
   const [storedMatchId, setStoredMatchId] =
-    useState<number | null>(() => readStoredActiveMatchId());
+    useState<number | null>(() =>
+      readStoredActiveMatchId()
+    );
+
+  const [minutesInput, setMinutesInput] =
+    useState(() =>
+      Math.max(
+        1,
+        Math.round(durationSeconds / 60)
+      )
+    );
+
+  const isControlMode =
+    new URLSearchParams(window.location.search).get("control") === "1";
+
+  useEffect(() => {
+    setMinutesInput(
+      Math.max(
+        1,
+        Math.round(durationSeconds / 60)
+      )
+    );
+  }, [durationSeconds]);
 
   useEffect(() => {
     function syncStoredMatch() {
       setStoredMatchId(readStoredActiveMatchId());
     }
 
-    window.addEventListener("storage", syncStoredMatch);
-    window.addEventListener("focus", syncStoredMatch);
+    window.addEventListener(
+      "storage",
+      syncStoredMatch
+    );
 
-    const interval = window.setInterval(syncStoredMatch, 500);
+    window.addEventListener(
+      "focus",
+      syncStoredMatch
+    );
+
+    const interval =
+      window.setInterval(syncStoredMatch, 500);
 
     return () => {
-      window.removeEventListener("storage", syncStoredMatch);
-      window.removeEventListener("focus", syncStoredMatch);
+      window.removeEventListener(
+        "storage",
+        syncStoredMatch
+      );
+
+      window.removeEventListener(
+        "focus",
+        syncStoredMatch
+      );
+
       window.clearInterval(interval);
     };
   }, []);
@@ -150,6 +208,10 @@ export default function OverlayView() {
     lastFinished ??
     null;
 
+  function applyMinutes() {
+    setDurationMinutes(minutesInput);
+  }
+
   if (!match) {
     return (
       <main style={pageStyle}>
@@ -171,6 +233,22 @@ export default function OverlayView() {
           <p style={emptyHelpStyle}>
             Ve a Resultados y presiona el botón 📺 OBS en un partido.
           </p>
+
+          {isControlMode && (
+            <TimerControlPanel
+              secondsLeft={secondsLeft}
+              durationSeconds={durationSeconds}
+              isRunning={isRunning}
+              minutesInput={minutesInput}
+              setMinutesInput={setMinutesInput}
+              startTimer={startTimer}
+              pauseTimer={pauseTimer}
+              resetTimer={resetTimer}
+              restartTimer={restartTimer}
+              addSeconds={addSeconds}
+              applyMinutes={applyMinutes}
+            />
+          )}
         </section>
       </main>
     );
@@ -206,9 +284,13 @@ export default function OverlayView() {
         </div>
 
         <div style={topInfoStyle}>
-          <span>⏱ {formatTime(secondsLeft)}</span>
+          <span>
+            ⏱ {formatTime(secondsLeft)}
+          </span>
 
-          <span>🏟 {getCourtLabel(match)}</span>
+          <span>
+            🏟 {getCourtLabel(match)}
+          </span>
         </div>
       </section>
 
@@ -253,8 +335,24 @@ export default function OverlayView() {
       )}
 
       <section style={bottomBarStyle}>
-        {getStatusText(match)}
+        {getStatusText(match, isRunning)}
       </section>
+
+      {isControlMode && (
+        <TimerControlPanel
+          secondsLeft={secondsLeft}
+          durationSeconds={durationSeconds}
+          isRunning={isRunning}
+          minutesInput={minutesInput}
+          setMinutesInput={setMinutesInput}
+          startTimer={startTimer}
+          pauseTimer={pauseTimer}
+          resetTimer={resetTimer}
+          restartTimer={restartTimer}
+          addSeconds={addSeconds}
+          applyMinutes={applyMinutes}
+        />
+      )}
     </main>
   );
 }
@@ -279,7 +377,8 @@ function TeamPanel({
     alignItems: "center",
     justifyContent: "space-between",
     gap: 24,
-    flexDirection: side === "left" ? "row" : "row-reverse",
+    flexDirection:
+      side === "left" ? "row" : "row-reverse",
   };
 
   const nameStyle: CSSProperties = {
@@ -288,7 +387,8 @@ function TeamPanel({
     lineHeight: 1.05,
     textTransform: "uppercase",
     wordBreak: "break-word",
-    textAlign: side === "left" ? "left" : "right",
+    textAlign:
+      side === "left" ? "left" : "right",
     flex: 1,
   };
 
@@ -334,6 +434,133 @@ function TeamLogo({
       alt={team.name}
       style={teamLogoStyle}
     />
+  );
+}
+
+function TimerControlPanel({
+  secondsLeft,
+  durationSeconds,
+  isRunning,
+  minutesInput,
+  setMinutesInput,
+  startTimer,
+  pauseTimer,
+  resetTimer,
+  restartTimer,
+  addSeconds,
+  applyMinutes,
+}: {
+  secondsLeft: number;
+  durationSeconds: number;
+  isRunning: boolean;
+  minutesInput: number;
+  setMinutesInput: (value: number) => void;
+  startTimer: () => void;
+  pauseTimer: () => void;
+  resetTimer: () => void;
+  restartTimer: () => void;
+  addSeconds: (seconds: number) => void;
+  applyMinutes: () => void;
+}) {
+  return (
+    <section style={controlPanelStyle}>
+      <div>
+        <div style={controlLabelStyle}>
+          CONTROL CRONÓMETRO OBS
+        </div>
+
+        <div style={controlTimeStyle}>
+          {formatTime(secondsLeft)}
+        </div>
+
+        <div style={controlSubTextStyle}>
+          Duración configurada: {Math.round(durationSeconds / 60)} min
+        </div>
+      </div>
+
+      <div style={controlButtonsGridStyle}>
+        <button
+          onClick={startTimer}
+          style={greenButtonStyle}
+        >
+          ▶ Iniciar
+        </button>
+
+        <button
+          onClick={pauseTimer}
+          style={orangeButtonStyle}
+        >
+          ⏸ Pausar
+        </button>
+
+        <button
+          onClick={() => resetTimer()}
+          style={grayButtonStyle}
+        >
+          ↺ Reiniciar
+        </button>
+
+        <button
+          onClick={restartTimer}
+          style={blueButtonStyle}
+        >
+          🔁 Reiniciar e iniciar
+        </button>
+
+        <button
+          onClick={() => addSeconds(60)}
+          style={grayButtonStyle}
+        >
+          +1 min
+        </button>
+
+        <button
+          onClick={() => addSeconds(-60)}
+          style={grayButtonStyle}
+        >
+          -1 min
+        </button>
+      </div>
+
+      <div style={minutesBoxStyle}>
+        <label style={controlSubTextStyle}>
+          Minutos por partido
+        </label>
+
+        <input
+          type="number"
+          min={1}
+          value={minutesInput}
+          onChange={(event) =>
+            setMinutesInput(Number(event.target.value))
+          }
+          style={minutesInputStyle}
+        />
+
+        <button
+          onClick={applyMinutes}
+          style={purpleButtonStyle}
+        >
+          Aplicar minutos
+        </button>
+      </div>
+
+      <div style={controlHelpStyle}>
+        Para OBS usa solo: <strong>/overlay</strong>.  
+        Para controlar usa: <strong>/overlay?control=1</strong>.
+      </div>
+
+      <div
+        style={{
+          ...statusPillStyle,
+          background: isRunning ? "#064e3b" : "#713f12",
+          borderColor: isRunning ? "#22c55e" : "#facc15",
+          color: isRunning ? "#bbf7d0" : "#fef3c7",
+        }}
+      >
+        {isRunning ? "EN VIVO" : "PAUSADO"}
+      </div>
+    </section>
   );
 }
 
@@ -499,6 +726,133 @@ const bottomBarStyle: CSSProperties = {
   fontSize: 28,
   fontWeight: 900,
   letterSpacing: 1,
+};
+
+const controlPanelStyle: CSSProperties = {
+  width: "100%",
+  maxWidth: 1180,
+  marginTop: 24,
+  background: "rgba(15, 23, 42, 0.96)",
+  border: "1px solid #475569",
+  borderRadius: 20,
+  padding: 20,
+  display: "grid",
+  gridTemplateColumns: "220px 1fr 240px",
+  gap: 18,
+  alignItems: "center",
+  boxShadow: "0 20px 55px rgba(0,0,0,.35)",
+  position: "relative",
+};
+
+const controlLabelStyle: CSSProperties = {
+  color: "#93c5fd",
+  fontSize: 12,
+  fontWeight: 900,
+  letterSpacing: 1,
+};
+
+const controlTimeStyle: CSSProperties = {
+  fontSize: 48,
+  fontWeight: 1000,
+  color: "#60a5fa",
+  lineHeight: 1,
+  marginTop: 6,
+};
+
+const controlSubTextStyle: CSSProperties = {
+  color: "#cbd5e1",
+  fontSize: 13,
+};
+
+const controlButtonsGridStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(3, minmax(120px, 1fr))",
+  gap: 10,
+};
+
+const minutesBoxStyle: CSSProperties = {
+  display: "grid",
+  gap: 8,
+};
+
+const minutesInputStyle: CSSProperties = {
+  width: "100%",
+  padding: "11px 12px",
+  background: "#020617",
+  border: "1px solid #334155",
+  borderRadius: 10,
+  color: "white",
+  fontWeight: 900,
+  fontSize: 18,
+};
+
+const controlHelpStyle: CSSProperties = {
+  gridColumn: "1 / -1",
+  color: "#94a3b8",
+  fontSize: 13,
+  borderTop: "1px solid #334155",
+  paddingTop: 12,
+};
+
+const statusPillStyle: CSSProperties = {
+  position: "absolute",
+  top: -14,
+  right: 22,
+  border: "1px solid",
+  borderRadius: 999,
+  padding: "6px 14px",
+  fontSize: 12,
+  fontWeight: 900,
+};
+
+const greenButtonStyle: CSSProperties = {
+  padding: "12px",
+  background: "#16a34a",
+  color: "white",
+  border: "none",
+  borderRadius: 10,
+  cursor: "pointer",
+  fontWeight: 900,
+};
+
+const orangeButtonStyle: CSSProperties = {
+  padding: "12px",
+  background: "#f97316",
+  color: "white",
+  border: "none",
+  borderRadius: 10,
+  cursor: "pointer",
+  fontWeight: 900,
+};
+
+const grayButtonStyle: CSSProperties = {
+  padding: "12px",
+  background: "#334155",
+  color: "white",
+  border: "none",
+  borderRadius: 10,
+  cursor: "pointer",
+  fontWeight: 900,
+};
+
+const blueButtonStyle: CSSProperties = {
+  padding: "12px",
+  background: "#2563eb",
+  color: "white",
+  border: "none",
+  borderRadius: 10,
+  cursor: "pointer",
+  fontWeight: 900,
+};
+
+const purpleButtonStyle: CSSProperties = {
+  padding: "12px",
+  background: "#7c3aed",
+  color: "white",
+  border: "none",
+  borderRadius: 10,
+  cursor: "pointer",
+  fontWeight: 900,
 };
 
 const emptyCardStyle: CSSProperties = {
