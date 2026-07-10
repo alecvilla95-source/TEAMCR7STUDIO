@@ -45,9 +45,11 @@ interface VenueGroup {
 
 interface TopScorerRow {
   key: string;
+  teamId: number;
   playerId: string;
   playerName: string;
   teamName: string;
+  teamLogoDataUrl?: string;
   category: TeamCategory;
   goals: number;
 }
@@ -235,8 +237,15 @@ function safeNumber(value: number) {
 }
 
 function calculateTopScorers(
-  records: GoalScorerRecord[]
+  records: GoalScorerRecord[],
+  teams: Team[]
 ): TopScorerRow[] {
+  const teamMap = new Map<number, Team>();
+
+  teams.forEach((team) => {
+    teamMap.set(team.id, team);
+  });
+
   const map =
     new Map<string, TopScorerRow>();
 
@@ -244,12 +253,17 @@ function calculateTopScorers(
     const key =
       `${record.category}_${record.teamId}_${record.playerId}`;
 
+    const team =
+      teamMap.get(record.teamId);
+
     if (!map.has(key)) {
       map.set(key, {
         key,
+        teamId: record.teamId,
         playerId: record.playerId,
         playerName: record.playerName,
         teamName: record.teamName,
+        teamLogoDataUrl: team?.logoDataUrl,
         category: record.category,
         goals: 0,
       });
@@ -258,6 +272,10 @@ function calculateTopScorers(
     const row = map.get(key)!;
 
     row.goals += record.goals;
+
+    if (!row.teamLogoDataUrl && team?.logoDataUrl) {
+      row.teamLogoDataUrl = team.logoDataUrl;
+    }
   });
 
   return Array.from(map.values())
@@ -270,6 +288,24 @@ function calculateTopScorers(
         b.playerName
       );
     });
+}
+
+function renderPrintTeamLogo(row: TopScorerRow) {
+  if (!row.teamLogoDataUrl) {
+    return `
+      <div class="team-logo-empty">
+        ⚽
+      </div>
+    `;
+  }
+
+  return `
+    <img
+      src="${row.teamLogoDataUrl}"
+      class="team-logo-img"
+      alt="${escapeHtml(row.teamName)}"
+    />
+  `;
 }
 
 function buildTopScorersPrintHtml({
@@ -293,7 +329,7 @@ function buildTopScorersPrintHtml({
     if (rows.length === 0) {
       return `
         <tr>
-          <td colspan="4" class="empty">
+          <td colspan="5" class="empty">
             Sin goles registrados.
           </td>
         </tr>
@@ -304,10 +340,19 @@ function buildTopScorersPrintHtml({
       .map(
         (row, index) => `
           <tr>
-            <td>${index + 1}</td>
+            <td class="center">${index + 1}</td>
+
+            <td class="center logo-cell">
+              ${renderPrintTeamLogo(row)}
+            </td>
+
             <td>${escapeHtml(row.playerName)}</td>
+
             <td>${escapeHtml(row.teamName)}</td>
-            <td><strong>${row.goals}</strong></td>
+
+            <td class="center">
+              <strong>${row.goals}</strong>
+            </td>
           </tr>
         `
       )
@@ -326,6 +371,7 @@ function buildTopScorersPrintHtml({
           <thead>
             <tr>
               <th>Pos</th>
+              <th>Logo</th>
               <th>Jugador/a</th>
               <th>Equipo</th>
               <th>Goles</th>
@@ -391,20 +437,42 @@ function buildTopScorersPrintHtml({
           th,
           td {
             border: 1px solid #111827;
-            padding: 9px;
+            padding: 8px;
             text-align: left;
             font-size: 14px;
+            vertical-align: middle;
           }
 
           th {
             background: #e5e7eb;
           }
 
-          td:first-child,
-          td:last-child,
-          th:first-child,
-          th:last-child {
+          .center {
             text-align: center;
+          }
+
+          .logo-cell {
+            width: 60px;
+          }
+
+          .team-logo-img {
+            width: 38px;
+            height: 38px;
+            object-fit: contain;
+            display: block;
+            margin: 0 auto;
+          }
+
+          .team-logo-empty {
+            width: 38px;
+            height: 38px;
+            margin: 0 auto;
+            border: 1px solid #9ca3af;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
           }
 
           .empty {
@@ -501,8 +569,8 @@ export default function ResultsView() {
 
   const topScorers =
     useMemo(
-      () => calculateTopScorers(goalRecords),
-      [goalRecords]
+      () => calculateTopScorers(goalRecords, teams),
+      [goalRecords, teams]
     );
 
   const finishedMatches = fixture.filter(
@@ -1264,6 +1332,30 @@ function TeamMiniLogo({
   );
 }
 
+function TopScorerLogo({
+  logoDataUrl,
+  teamName,
+}: {
+  logoDataUrl?: string;
+  teamName: string;
+}) {
+  if (!logoDataUrl) {
+    return (
+      <div style={topScorerLogoEmpty}>
+        ⚽
+      </div>
+    );
+  }
+
+  return (
+    <img
+      src={logoDataUrl}
+      alt={teamName}
+      style={topScorerLogo}
+    />
+  );
+}
+
 function GoalScorersModal({
   match,
   teamAPlayers,
@@ -1721,7 +1813,14 @@ function TopScorersTable({
                 </td>
 
                 <td style={tdStyle}>
-                  {row.teamName}
+                  <div style={topScorerTeamCell}>
+                    <TopScorerLogo
+                      logoDataUrl={row.teamLogoDataUrl}
+                      teamName={row.teamName}
+                    />
+
+                    <span>{row.teamName}</span>
+                  </div>
                 </td>
 
                 <td style={tdStyle}>
@@ -1925,6 +2024,36 @@ const teamMiniLogoEmpty: CSSProperties = {
   alignItems: "center",
   justifyContent: "center",
   flexShrink: 0,
+};
+
+const topScorerLogo: CSSProperties = {
+  width: 34,
+  height: 34,
+  objectFit: "contain",
+  background: "#020617",
+  border: "1px solid #334155",
+  borderRadius: 8,
+  padding: 3,
+  flexShrink: 0,
+};
+
+const topScorerLogoEmpty: CSSProperties = {
+  width: 34,
+  height: 34,
+  background: "#020617",
+  border: "1px solid #334155",
+  borderRadius: 8,
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  flexShrink: 0,
+  fontSize: 15,
+};
+
+const topScorerTeamCell: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: 10,
 };
 
 const teamName: CSSProperties = {
