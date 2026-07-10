@@ -4,6 +4,7 @@ import {
   type CSSProperties,
 } from "react";
 
+import type { Match } from "../../types/match";
 import type { Team } from "../../types/team";
 import type { Player } from "../../types/player";
 
@@ -11,6 +12,7 @@ import { useTournament } from "../../store/tournamentStore";
 import { useTeams } from "../../store/teamStore";
 import { usePlayers } from "../../store/playerStore";
 import { useLogo } from "../../store/logoStore";
+import { useFixture } from "../../store/fixtureStore";
 
 import {
   exportPlayerTemplate,
@@ -52,6 +54,22 @@ function escapeHtml(value: string) {
     .replaceAll("'", "&#039;");
 }
 
+function readImageAsDataUrl(file: File) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+
+    reader.onload = () => {
+      resolve(String(reader.result ?? ""));
+    };
+
+    reader.onerror = () => {
+      reject(new Error("No se pudo leer la imagen."));
+    };
+
+    reader.readAsDataURL(file);
+  });
+}
+
 function printHtml(html: string) {
   const printWindow = window.open(
     "",
@@ -74,17 +92,15 @@ function printHtml(html: string) {
 
 function renderTeamCr7Logo() {
   return `
-    <div class="fixed-logo-wrap">
-      <img
-        src="/teamcr7studio-logo.png"
-        class="logo-img teamcr7-logo-img"
-        alt="TEAMCR7STUDIO"
-        onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';"
-      />
+    <img
+      src="/teamcr7studio-logo.png"
+      class="main-logo-img"
+      alt="TEAMCR7STUDIO"
+      onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';"
+    />
 
-      <div class="fixed-logo-fallback">
-        TEAM CR7<br />STUDIO
-      </div>
+    <div class="logo-fallback">
+      TEAM CR7<br />STUDIO
     </div>
   `;
 }
@@ -92,8 +108,8 @@ function renderTeamCr7Logo() {
 function renderChampionshipLogo(logoDataUrl: string | null) {
   if (!logoDataUrl) {
     return `
-      <div class="championship-placeholder">
-        LOGO DEL<br />CAMPEONATO
+      <div class="logo-text-placeholder">
+        “LOGO CAMPEONATO”
       </div>
     `;
   }
@@ -101,19 +117,39 @@ function renderChampionshipLogo(logoDataUrl: string | null) {
   return `
     <img
       src="${logoDataUrl}"
-      class="logo-img championship-logo-img"
+      class="side-logo-img"
       alt="Logo campeonato"
     />
   `;
 }
 
+function renderTeamLogo(team: Team) {
+  if (!team.logoDataUrl) {
+    return `
+      <div class="logo-text-placeholder">
+        “LOGO DE EQUIPO”
+      </div>
+    `;
+  }
+
+  return `
+    <img
+      src="${team.logoDataUrl}"
+      class="team-logo-img"
+      alt="${escapeHtml(team.name)}"
+    />
+  `;
+}
+
 function renderPlayerRows(players: Player[]) {
-  const rows =
-    players.length > 0
-      ? players
-      : Array.from({
-          length: 10,
-        }).map(() => null);
+  const totalRows = Math.max(players.length, 18);
+
+  const rows = Array.from(
+    {
+      length: totalRows,
+    },
+    (_, index) => players[index] ?? null
+  );
 
   return rows
     .map((player, index) => {
@@ -122,12 +158,212 @@ function renderPlayerRows(players: Player[]) {
           <td>${String(index + 1).padStart(2, "0")}</td>
           <td>${player ? escapeHtml(player.name) : ""}</td>
           <td>${player ? escapeHtml(player.documentId) : ""}</td>
-          <td>${player ? escapeHtml(player.jerseyNumber) : ""}</td>
           <td></td>
+          <td>${player ? escapeHtml(player.jerseyNumber) : ""}</td>
         </tr>
       `;
     })
     .join("");
+}
+
+function buildRosterStyles() {
+  return `
+    @page {
+      size: A4 portrait;
+      margin: 7mm;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: Arial, sans-serif;
+      margin: 0;
+      color: #111827;
+    }
+
+    .sheet {
+      page-break-after: always;
+      width: 100%;
+    }
+
+    .sheet:last-child {
+      page-break-after: auto;
+    }
+
+    table {
+      border-collapse: collapse;
+      width: 100%;
+    }
+
+    .header-table td,
+    .info-table td,
+    .players-table th,
+    .players-table td {
+      border: 2px solid #111827;
+    }
+
+    .header-table td {
+      height: 92px;
+      text-align: center;
+      vertical-align: middle;
+    }
+
+    .main-logo-cell {
+      width: 24%;
+      padding: 4px;
+    }
+
+    .title-cell {
+      width: 52%;
+      padding: 6px;
+    }
+
+    .championship-logo-cell {
+      width: 24%;
+      padding: 5px;
+    }
+
+    .main-logo-img {
+      max-width: 100%;
+      max-height: 84px;
+      object-fit: contain;
+    }
+
+    .side-logo-img {
+      max-width: 100%;
+      max-height: 75px;
+      object-fit: contain;
+    }
+
+    .team-logo-img {
+      max-width: 100%;
+      max-height: 82px;
+      object-fit: contain;
+    }
+
+    .logo-fallback {
+      display: none;
+      width: 100%;
+      height: 82px;
+      align-items: center;
+      justify-content: center;
+      font-weight: 900;
+      font-size: 20px;
+      line-height: 1.1;
+    }
+
+    .logo-text-placeholder {
+      font-weight: 900;
+      font-size: 13px;
+      line-height: 1.2;
+      text-transform: uppercase;
+    }
+
+    .tournament-name {
+      font-size: 24px;
+      font-weight: 900;
+      text-transform: uppercase;
+      line-height: 1.1;
+    }
+
+    .info-table td {
+      height: 28px;
+      padding: 4px 9px;
+      vertical-align: middle;
+      font-size: 12px;
+    }
+
+    .label-cell {
+      width: 24%;
+      font-weight: 900;
+      text-transform: uppercase;
+      background: #f9fafb;
+    }
+
+    .value-cell {
+      width: 52%;
+      font-weight: 700;
+    }
+
+    .team-name-big {
+      font-size: 24px !important;
+      font-weight: 900 !important;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      line-height: 1;
+    }
+
+    .team-logo-cell {
+      width: 24%;
+      text-align: center;
+      vertical-align: middle;
+      padding: 5px;
+    }
+
+    .category-value {
+      text-align: center;
+      font-size: 15px !important;
+      font-weight: 900 !important;
+      text-transform: uppercase;
+    }
+
+    .court-value {
+      text-align: center;
+      font-size: 13px !important;
+      font-weight: 800 !important;
+    }
+
+    .spacer {
+      height: 9px;
+    }
+
+    .players-table th {
+      height: 24px;
+      padding: 4px;
+      font-size: 11px;
+      text-align: center;
+      font-weight: 900;
+      background: #f9fafb;
+    }
+
+    .players-table td {
+      height: 24px;
+      padding: 4px;
+      font-size: 11px;
+    }
+
+    .players-table td:first-child,
+    .players-table td:nth-child(5) {
+      text-align: center;
+      font-weight: 800;
+    }
+
+    .footer {
+      margin-top: 24px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 70px;
+      text-align: center;
+      font-size: 11px;
+    }
+
+    .signature {
+      border-top: 1px solid #111827;
+      padding-top: 6px;
+    }
+
+    @media print {
+      body {
+        margin: 0;
+      }
+
+      .sheet {
+        page-break-inside: avoid;
+      }
+    }
+  `;
 }
 
 function buildTeamRosterHtml({
@@ -152,274 +388,93 @@ function buildTeamRosterHtml({
         <title>Ficha de Jugadores</title>
 
         <style>
-          * {
-            box-sizing: border-box;
-          }
-
-          body {
-            font-family: Arial, sans-serif;
-            margin: 25px;
-            color: #111827;
-          }
-
-          .sheet {
-            page-break-after: always;
-          }
-
-          .sheet:last-child {
-            page-break-after: auto;
-          }
-
-          .top {
-            display: grid;
-            grid-template-columns: 1.15fr 1.7fr 1fr;
-            border: 1px solid #111827;
-            margin-bottom: 0;
-          }
-
-          .logo-box,
-          .title-box,
-          .championship-box {
-            min-height: 145px;
-            border-right: 1px solid #111827;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            text-align: center;
-          }
-
-          .logo-box {
-            padding: 4px;
-          }
-
-          .title-box {
-            padding: 10px 14px;
-          }
-
-          .championship-box {
-            border-right: none;
-            background: #fafafa;
-            padding: 8px;
-          }
-
-          .fixed-logo-wrap {
-            width: 100%;
-            height: 132px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-          }
-
-          .logo-img {
-            max-width: 100%;
-            max-height: 100px;
-            object-fit: contain;
-          }
-
-          .teamcr7-logo-img {
-            max-width: 98%;
-            max-height: 130px;
-            object-fit: contain;
-          }
-
-          .championship-logo-img {
-            max-width: 100%;
-            max-height: 95px;
-            object-fit: contain;
-          }
-
-          .fixed-logo-fallback {
-            width: 100%;
-            height: 100%;
-            display: none;
-            align-items: center;
-            justify-content: center;
-            font-size: 24px;
-            font-weight: 900;
-            line-height: 1.1;
-            color: #111827;
-          }
-
-          .championship-placeholder {
-            font-size: 13px;
-            font-weight: 900;
-            color: #6b7280;
-            line-height: 1.2;
-            text-transform: uppercase;
-          }
-
-          .title-box h1 {
-            margin: 0;
-            font-size: 24px;
-            text-transform: uppercase;
-            line-height: 1.15;
-            font-weight: 900;
-          }
-
-          .title-box h2 {
-            margin: 8px 0 0;
-            font-size: 28px;
-            text-transform: uppercase;
-            line-height: 1.15;
-            font-weight: 900;
-          }
-
-          .right-title-small {
-            font-size: 12px;
-            font-weight: 900;
-            color: #6b7280;
-            text-transform: uppercase;
-            margin-bottom: 8px;
-          }
-
-          table.info {
-            width: 100%;
-            border-collapse: collapse;
-            margin-bottom: 18px;
-          }
-
-          table.info td {
-            border: 1px solid #111827;
-            padding: 10px;
-            font-size: 14px;
-            height: 38px;
-          }
-
-          table.info td:first-child {
-            width: 190px;
-            font-weight: bold;
-            background: #f3f4f6;
-          }
-
-          table.info td:nth-child(2) {
-            font-weight: bold;
-          }
-
-          .team-name-big {
-            font-size: 30px !important;
-            font-weight: 900 !important;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            line-height: 1.1;
-          }
-
-          .category {
-            text-align: center;
-            font-size: 24px;
-            font-weight: 900;
-            text-transform: uppercase;
-          }
-
-          table.players {
-            width: 100%;
-            border-collapse: collapse;
-          }
-
-          table.players th,
-          table.players td {
-            border: 1px solid #111827;
-            padding: 8px;
-            font-size: 13px;
-            height: 42px;
-          }
-
-          table.players th {
-            background: #f3f4f6;
-            text-align: center;
-            font-weight: bold;
-          }
-
-          table.players td:first-child,
-          table.players td:nth-child(4) {
-            text-align: center;
-            font-weight: bold;
-          }
-
-          .footer {
-            margin-top: 28px;
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 50px;
-            text-align: center;
-            font-size: 13px;
-          }
-
-          .signature {
-            border-top: 1px solid #111827;
-            padding-top: 8px;
-            margin-top: 55px;
-          }
-
-          @media print {
-            body {
-              margin: 14mm;
-            }
-          }
+          ${buildRosterStyles()}
         </style>
       </head>
 
       <body>
         <div class="sheet">
-          <div class="top">
-            <div class="logo-box">
-              ${renderTeamCr7Logo()}
-            </div>
-
-            <div class="title-box">
-              <div>
-                <h1>${escapeHtml(tournamentName)}</h1>
-                <h2>Ficha de jugadores</h2>
-              </div>
-            </div>
-
-            <div class="championship-box">
-              <div>
-                <div class="right-title-small">
-                  LOGO DEL CAMPEONATO
-                </div>
-
-                ${renderChampionshipLogo(logoDataUrl)}
-              </div>
-            </div>
-          </div>
-
-          <table class="info">
+          <table class="header-table">
             <tbody>
               <tr>
-                <td>EQUIPO:</td>
-                <td class="team-name-big">${escapeHtml(team.name)}</td>
-              </tr>
+                <td class="main-logo-cell">
+                  ${renderTeamCr7Logo()}
+                </td>
 
-              <tr>
-                <td>DELEGADO 1:</td>
-                <td>${escapeHtml(team.delegate1 ?? "")}</td>
-              </tr>
+                <td class="title-cell">
+                  <div class="tournament-name">
+                    “${escapeHtml(tournamentName)}”
+                  </div>
+                </td>
 
-              <tr>
-                <td>DELEGADO 2:</td>
-                <td>${escapeHtml(team.delegate2 ?? "")}</td>
-              </tr>
-
-              <tr>
-                <td>CATEGORIA:</td>
-                <td class="category">${escapeHtml(getCategoryLabel(team))}</td>
-              </tr>
-
-              <tr>
-                <td>CANCHA:</td>
-                <td>${escapeHtml(getCourtLabel(team))}</td>
+                <td class="championship-logo-cell">
+                  ${renderChampionshipLogo(logoDataUrl)}
+                </td>
               </tr>
             </tbody>
           </table>
 
-          <table class="players">
+          <table class="info-table">
+            <tbody>
+              <tr>
+                <td class="label-cell">EQUIPO:</td>
+                <td class="value-cell team-name-big">
+                  “${escapeHtml(team.name)}”
+                </td>
+                <td
+                  class="team-logo-cell"
+                  rowspan="3"
+                >
+                  ${renderTeamLogo(team)}
+                </td>
+              </tr>
+
+              <tr>
+                <td class="label-cell">DELEGADO 1:</td>
+                <td class="value-cell">
+                  ${escapeHtml(team.delegate1 ?? "")}
+                </td>
+              </tr>
+
+              <tr>
+                <td class="label-cell">DELEGADO 2:</td>
+                <td class="value-cell">
+                  ${escapeHtml(team.delegate2 ?? "")}
+                </td>
+              </tr>
+
+              <tr>
+                <td class="label-cell">CATEGORIA:</td>
+                <td
+                  class="category-value"
+                  colspan="2"
+                >
+                  ${escapeHtml(getCategoryLabel(team))}
+                </td>
+              </tr>
+
+              <tr>
+                <td class="label-cell">CANCHA:</td>
+                <td
+                  class="court-value"
+                  colspan="2"
+                >
+                  ${escapeHtml(getCourtLabel(team))}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+
+          <div class="spacer"></div>
+
+          <table class="players-table">
             <thead>
               <tr>
-                <th style="width: 55px;">N°</th>
-                <th>APELLIDOS Y NOMBRES</th>
-                <th style="width: 170px;">DNI</th>
-                <th style="width: 85px;">DORSAL</th>
-                <th style="width: 150px;">FIRMA</th>
+                <th style="width: 6%;">N°</th>
+                <th style="width: 48%;">NOMBRE Y APELLIDOS</th>
+                <th style="width: 18%;">D.N.I.</th>
+                <th style="width: 17%;">FIRMA</th>
+                <th style="width: 11%;">DORSAL</th>
               </tr>
             </thead>
 
@@ -512,209 +567,7 @@ function buildAllRostersHtml({
         <title>Fichas de Jugadores</title>
 
         <style>
-          * {
-            box-sizing: border-box;
-          }
-
-          body {
-            font-family: Arial, sans-serif;
-            margin: 25px;
-            color: #111827;
-          }
-
-          .sheet {
-            page-break-after: always;
-          }
-
-          .sheet:last-child {
-            page-break-after: auto;
-          }
-
-          .top {
-            display: grid;
-            grid-template-columns: 1.15fr 1.7fr 1fr;
-            border: 1px solid #111827;
-            margin-bottom: 0;
-          }
-
-          .logo-box,
-          .title-box,
-          .championship-box {
-            min-height: 145px;
-            border-right: 1px solid #111827;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            text-align: center;
-          }
-
-          .logo-box {
-            padding: 4px;
-          }
-
-          .title-box {
-            padding: 10px 14px;
-          }
-
-          .championship-box {
-            border-right: none;
-            background: #fafafa;
-            padding: 8px;
-          }
-
-          .fixed-logo-wrap {
-            width: 100%;
-            height: 132px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-          }
-
-          .logo-img {
-            max-width: 100%;
-            max-height: 100px;
-            object-fit: contain;
-          }
-
-          .teamcr7-logo-img {
-            max-width: 98%;
-            max-height: 130px;
-            object-fit: contain;
-          }
-
-          .championship-logo-img {
-            max-width: 100%;
-            max-height: 95px;
-            object-fit: contain;
-          }
-
-          .fixed-logo-fallback {
-            width: 100%;
-            height: 100%;
-            display: none;
-            align-items: center;
-            justify-content: center;
-            font-size: 24px;
-            font-weight: 900;
-            line-height: 1.1;
-            color: #111827;
-          }
-
-          .championship-placeholder {
-            font-size: 13px;
-            font-weight: 900;
-            color: #6b7280;
-            line-height: 1.2;
-            text-transform: uppercase;
-          }
-
-          .title-box h1 {
-            margin: 0;
-            font-size: 24px;
-            text-transform: uppercase;
-            line-height: 1.15;
-            font-weight: 900;
-          }
-
-          .title-box h2 {
-            margin: 8px 0 0;
-            font-size: 28px;
-            text-transform: uppercase;
-            line-height: 1.15;
-            font-weight: 900;
-          }
-
-          .right-title-small {
-            font-size: 12px;
-            font-weight: 900;
-            color: #6b7280;
-            text-transform: uppercase;
-            margin-bottom: 8px;
-          }
-
-          table.info {
-            width: 100%;
-            border-collapse: collapse;
-            margin-bottom: 18px;
-          }
-
-          table.info td {
-            border: 1px solid #111827;
-            padding: 10px;
-            font-size: 14px;
-            height: 38px;
-          }
-
-          table.info td:first-child {
-            width: 190px;
-            font-weight: bold;
-            background: #f3f4f6;
-          }
-
-          table.info td:nth-child(2) {
-            font-weight: bold;
-          }
-
-          .team-name-big {
-            font-size: 30px !important;
-            font-weight: 900 !important;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            line-height: 1.1;
-          }
-
-          .category {
-            text-align: center;
-            font-size: 24px;
-            font-weight: 900;
-            text-transform: uppercase;
-          }
-
-          table.players {
-            width: 100%;
-            border-collapse: collapse;
-          }
-
-          table.players th,
-          table.players td {
-            border: 1px solid #111827;
-            padding: 8px;
-            font-size: 13px;
-            height: 42px;
-          }
-
-          table.players th {
-            background: #f3f4f6;
-            text-align: center;
-            font-weight: bold;
-          }
-
-          table.players td:first-child,
-          table.players td:nth-child(4) {
-            text-align: center;
-            font-weight: bold;
-          }
-
-          .footer {
-            margin-top: 28px;
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 50px;
-            text-align: center;
-            font-size: 13px;
-          }
-
-          .signature {
-            border-top: 1px solid #111827;
-            padding-top: 8px;
-            margin-top: 55px;
-          }
-
-          @media print {
-            body {
-              margin: 14mm;
-            }
-          }
+          ${buildRosterStyles()}
         </style>
       </head>
 
@@ -734,6 +587,40 @@ function buildAllRostersHtml({
   `;
 }
 
+function updateTeamInsideMatch(
+  match: Match,
+  teamId: number,
+  patch: Partial<Team>
+): Match {
+  return {
+    ...match,
+
+    teamA:
+      match.teamA?.id === teamId
+        ? {
+            ...match.teamA,
+            ...patch,
+          }
+        : match.teamA,
+
+    teamB:
+      match.teamB?.id === teamId
+        ? {
+            ...match.teamB,
+            ...patch,
+          }
+        : match.teamB,
+
+    winner:
+      match.winner?.id === teamId
+        ? {
+            ...match.winner,
+            ...patch,
+          }
+        : match.winner,
+  };
+}
+
 export default function PlayersView() {
   const { tournament } = useTournament();
 
@@ -746,12 +633,20 @@ export default function PlayersView() {
     setPlayersForTeam,
   } = usePlayers();
 
+  const {
+    fixture,
+    setFixture,
+  } = useFixture();
+
   const { logoDataUrl } = useLogo();
 
   const [expandedTeamId, setExpandedTeamId] =
     useState<number | null>(null);
 
   const fileRefs =
+    useRef<Record<number, HTMLInputElement | null>>({});
+
+  const logoFileRefs =
     useRef<Record<number, HTMLInputElement | null>>({});
 
   const allUploadRef =
@@ -765,10 +660,9 @@ export default function PlayersView() {
     (team) => team.category === "WOMEN"
   );
 
-  function updateTeamDelegates(
+  function updateTeamEverywhere(
     teamId: number,
-    delegate1: string,
-    delegate2: string
+    patch: Partial<Team>
   ) {
     const nextTeams = teams.map((team) => {
       if (team.id !== teamId) {
@@ -777,12 +671,35 @@ export default function PlayersView() {
 
       return {
         ...team,
-        delegate1,
-        delegate2,
+        ...patch,
       };
     });
 
     setTeams(nextTeams);
+
+    const nextFixture = fixture.map((match) =>
+      updateTeamInsideMatch(
+        match,
+        teamId,
+        patch
+      )
+    );
+
+    setFixture(nextFixture);
+  }
+
+  function updateTeamDelegates(
+    teamId: number,
+    delegate1: string,
+    delegate2: string
+  ) {
+    updateTeamEverywhere(
+      teamId,
+      {
+        delegate1,
+        delegate2,
+      }
+    );
   }
 
   function updateManyTeamDelegates(
@@ -815,13 +732,116 @@ export default function PlayersView() {
     });
 
     setTeams(nextTeams);
+
+    const nextFixture = fixture.map((match) => {
+      const patchedA =
+        match.teamA &&
+        delegateMap.has(match.teamA.id)
+          ? {
+              ...match.teamA,
+              delegate1:
+                delegateMap.get(match.teamA.id)!.delegate1,
+              delegate2:
+                delegateMap.get(match.teamA.id)!.delegate2,
+            }
+          : match.teamA;
+
+      const patchedB =
+        match.teamB &&
+        delegateMap.has(match.teamB.id)
+          ? {
+              ...match.teamB,
+              delegate1:
+                delegateMap.get(match.teamB.id)!.delegate1,
+              delegate2:
+                delegateMap.get(match.teamB.id)!.delegate2,
+            }
+          : match.teamB;
+
+      const patchedWinner =
+        match.winner &&
+        delegateMap.has(match.winner.id)
+          ? {
+              ...match.winner,
+              delegate1:
+                delegateMap.get(match.winner.id)!.delegate1,
+              delegate2:
+                delegateMap.get(match.winner.id)!.delegate2,
+            }
+          : match.winner;
+
+      return {
+        ...match,
+        teamA: patchedA,
+        teamB: patchedB,
+        winner: patchedWinner,
+      };
+    });
+
+    setFixture(nextFixture);
+  }
+
+  async function uploadTeamLogo(
+    event: React.ChangeEvent<HTMLInputElement>,
+    team: Team
+  ) {
+    const file =
+      event.target.files?.[0];
+
+    if (!file) return;
+
+    try {
+      if (!file.type.startsWith("image/")) {
+        alert("Debes seleccionar una imagen.");
+        return;
+      }
+
+      const maxSizeMb = 1.5;
+
+      if (file.size > maxSizeMb * 1024 * 1024) {
+        alert(
+          `El logo pesa demasiado. Usa una imagen menor a ${maxSizeMb} MB.`
+        );
+
+        return;
+      }
+
+      const logoDataUrl =
+        await readImageAsDataUrl(file);
+
+      updateTeamEverywhere(
+        team.id,
+        {
+          logoDataUrl,
+        }
+      );
+    } catch {
+      alert("No se pudo cargar el logo del equipo.");
+    } finally {
+      event.target.value = "";
+    }
+  }
+
+  function removeTeamLogo(team: Team) {
+    const confirmRemove = window.confirm(
+      `¿Quitar logo de ${team.name}?`
+    );
+
+    if (!confirmRemove) return;
+
+    updateTeamEverywhere(
+      team.id,
+      {
+        logoDataUrl: undefined,
+      }
+    );
   }
 
   function downloadTemplate(team: Team) {
     exportPlayerTemplate({
       tournamentName: tournament?.name ?? "Campeonato",
       team,
-      maxPlayers: 10,
+      maxPlayers: 18,
     });
   }
 
@@ -834,7 +854,7 @@ export default function PlayersView() {
     exportAllPlayerTemplates({
       tournamentName: tournament?.name ?? "Campeonato",
       teams,
-      maxPlayers: 10,
+      maxPlayers: 18,
     });
   }
 
@@ -870,7 +890,8 @@ export default function PlayersView() {
   async function uploadAllTemplates(
     event: React.ChangeEvent<HTMLInputElement>
   ) {
-    const file = event.target.files?.[0];
+    const file =
+      event.target.files?.[0];
 
     if (!file) return;
 
@@ -930,7 +951,8 @@ export default function PlayersView() {
     event: React.ChangeEvent<HTMLInputElement>,
     team: Team
   ) {
-    const file = event.target.files?.[0];
+    const file =
+      event.target.files?.[0];
 
     if (!file) return;
 
@@ -1073,10 +1095,13 @@ export default function PlayersView() {
         expandedTeamId={expandedTeamId}
         setExpandedTeamId={setExpandedTeamId}
         fileRefs={fileRefs}
+        logoFileRefs={logoFileRefs}
         getPlayersByTeam={getPlayersByTeam}
         onDownload={downloadTemplate}
         onUpload={uploadTemplate}
         onPrint={printTeamRoster}
+        onLogoUpload={uploadTeamLogo}
+        onLogoRemove={removeTeamLogo}
       />
 
       {womenTeams.length > 0 && (
@@ -1087,10 +1112,13 @@ export default function PlayersView() {
           expandedTeamId={expandedTeamId}
           setExpandedTeamId={setExpandedTeamId}
           fileRefs={fileRefs}
+          logoFileRefs={logoFileRefs}
           getPlayersByTeam={getPlayersByTeam}
           onDownload={downloadTemplate}
           onUpload={uploadTemplate}
           onPrint={printTeamRoster}
+          onLogoUpload={uploadTeamLogo}
+          onLogoRemove={removeTeamLogo}
         />
       )}
     </div>
@@ -1104,10 +1132,13 @@ function TeamSection({
   expandedTeamId,
   setExpandedTeamId,
   fileRefs,
+  logoFileRefs,
   getPlayersByTeam,
   onDownload,
   onUpload,
   onPrint,
+  onLogoUpload,
+  onLogoRemove,
 }: {
   title: string;
   teams: Team[];
@@ -1117,6 +1148,9 @@ function TeamSection({
   fileRefs: React.MutableRefObject<
     Record<number, HTMLInputElement | null>
   >;
+  logoFileRefs: React.MutableRefObject<
+    Record<number, HTMLInputElement | null>
+  >;
   getPlayersByTeam: (teamId: number) => Player[];
   onDownload: (team: Team) => void;
   onUpload: (
@@ -1124,6 +1158,11 @@ function TeamSection({
     team: Team
   ) => void;
   onPrint: (team: Team) => void;
+  onLogoUpload: (
+    event: React.ChangeEvent<HTMLInputElement>,
+    team: Team
+  ) => void;
+  onLogoRemove: (team: Team) => void;
 }) {
   const grouped =
     groupTeamsByCourt(teams);
@@ -1182,6 +1221,9 @@ function TeamSection({
                   fileInputRef={(element) => {
                     fileRefs.current[team.id] = element;
                   }}
+                  logoInputRef={(element) => {
+                    logoFileRefs.current[team.id] = element;
+                  }}
                   onDownload={() => onDownload(team)}
                   onUploadClick={() =>
                     fileRefs.current[team.id]?.click()
@@ -1190,6 +1232,15 @@ function TeamSection({
                     onUpload(event, team)
                   }
                   onPrint={() => onPrint(team)}
+                  onLogoUploadClick={() =>
+                    logoFileRefs.current[team.id]?.click()
+                  }
+                  onLogoUpload={(event) =>
+                    onLogoUpload(event, team)
+                  }
+                  onLogoRemove={() =>
+                    onLogoRemove(team)
+                  }
                 />
               );
             })}
@@ -1207,10 +1258,14 @@ function TeamPlayerCard({
   expanded,
   onToggle,
   fileInputRef,
+  logoInputRef,
   onDownload,
   onUploadClick,
   onUpload,
   onPrint,
+  onLogoUploadClick,
+  onLogoUpload,
+  onLogoRemove,
 }: {
   team: Team;
   players: Player[];
@@ -1220,12 +1275,20 @@ function TeamPlayerCard({
   fileInputRef: (
     element: HTMLInputElement | null
   ) => void;
+  logoInputRef: (
+    element: HTMLInputElement | null
+  ) => void;
   onDownload: () => void;
   onUploadClick: () => void;
   onUpload: (
     event: React.ChangeEvent<HTMLInputElement>
   ) => void;
   onPrint: () => void;
+  onLogoUploadClick: () => void;
+  onLogoUpload: (
+    event: React.ChangeEvent<HTMLInputElement>
+  ) => void;
+  onLogoRemove: () => void;
 }) {
   return (
     <div
@@ -1238,22 +1301,63 @@ function TeamPlayerCard({
     >
       <div
         style={{
-          color,
-          fontWeight: "bold",
-          marginBottom: 8,
+          display: "flex",
+          gap: 14,
+          alignItems: "center",
+          marginBottom: 14,
         }}
       >
-        {getCategoryLabel(team)} | {getCourtLabel(team)}
+        <TeamLogoBox team={team} />
+
+        <div>
+          <div
+            style={{
+              color,
+              fontWeight: "bold",
+              marginBottom: 6,
+            }}
+          >
+            {getCategoryLabel(team)} | {getCourtLabel(team)}
+          </div>
+
+          <h3
+            style={{
+              margin: 0,
+              fontSize: 24,
+            }}
+          >
+            {team.name}
+          </h3>
+        </div>
       </div>
 
-      <h3
+      <input
+        ref={logoInputRef}
+        type="file"
+        accept="image/*"
         style={{
-          marginTop: 0,
-          fontSize: 24,
+          display: "none",
         }}
-      >
-        {team.name}
-      </h3>
+        onChange={onLogoUpload}
+      />
+
+      <div style={logoActions}>
+        <button
+          onClick={onLogoUploadClick}
+          style={logoButton}
+        >
+          🖼 Subir logo equipo
+        </button>
+
+        {team.logoDataUrl && (
+          <button
+            onClick={onLogoRemove}
+            style={removeLogoButton}
+          >
+            Quitar logo
+          </button>
+        )}
+      </div>
 
       <p
         style={{
@@ -1329,6 +1433,28 @@ function TeamPlayerCard({
         <PlayersTable players={players} />
       )}
     </div>
+  );
+}
+
+function TeamLogoBox({
+  team,
+}: {
+  team: Team;
+}) {
+  if (!team.logoDataUrl) {
+    return (
+      <div style={teamLogoEmpty}>
+        ⚽
+      </div>
+    );
+  }
+
+  return (
+    <img
+      src={team.logoDataUrl}
+      alt={team.name}
+      style={teamLogoPreview}
+    />
   );
 }
 
@@ -1497,6 +1623,58 @@ const teamGrid: CSSProperties = {
   gridTemplateColumns:
     "repeat(auto-fit, minmax(340px, 1fr))",
   gap: 18,
+};
+
+const teamLogoPreview: CSSProperties = {
+  width: 72,
+  height: 72,
+  objectFit: "contain",
+  background: "#0f172a",
+  border: "1px solid #334155",
+  borderRadius: 14,
+  padding: 6,
+  flexShrink: 0,
+};
+
+const teamLogoEmpty: CSSProperties = {
+  width: 72,
+  height: 72,
+  background: "#0f172a",
+  border: "1px solid #334155",
+  borderRadius: 14,
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  fontSize: 30,
+  flexShrink: 0,
+};
+
+const logoActions: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns:
+    "repeat(auto-fit, minmax(130px, 1fr))",
+  gap: 10,
+  marginBottom: 15,
+};
+
+const logoButton: CSSProperties = {
+  padding: "10px",
+  background: "#0ea5e9",
+  color: "white",
+  border: "none",
+  borderRadius: 8,
+  cursor: "pointer",
+  fontWeight: "bold",
+};
+
+const removeLogoButton: CSSProperties = {
+  padding: "10px",
+  background: "#dc2626",
+  color: "white",
+  border: "none",
+  borderRadius: 8,
+  cursor: "pointer",
+  fontWeight: "bold",
 };
 
 const buttonGrid: CSSProperties = {

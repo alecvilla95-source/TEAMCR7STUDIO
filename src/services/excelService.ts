@@ -27,7 +27,7 @@ function normalizeText(value: string) {
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .toUpperCase()
-    .replace(/[:]/g, "")
+    .replace(/[:.]/g, "")
     .replace(/\s+/g, " ")
     .trim();
 }
@@ -88,14 +88,6 @@ function getFootballCategoryLabel(team: Team) {
   return "FÚTBOL MASCULINO";
 }
 
-function getCategoryLabel(team: Team) {
-  if (team.category === "WOMEN") {
-    return "MUJERES";
-  }
-
-  return "VARONES";
-}
-
 function getCourtLabel(team: Team) {
   if (team.category === "WOMEN") {
     return `C. Mujer ${team.assignedCourt ?? "-"}`;
@@ -138,7 +130,7 @@ function downloadWorkbook(
 function createPlayerTemplateSheet({
   tournamentName,
   team,
-  maxPlayers = 10,
+  maxPlayers = 18,
 }: {
   tournamentName: string;
   team: Team;
@@ -146,25 +138,18 @@ function createPlayerTemplateSheet({
 }) {
   const rows: Array<Array<string | number>> = [
     [
+      "LOGO TEAMCR7STUDIO",
+      `"${tournamentName}"`,
       "",
-      tournamentName,
-      "",
-      "",
-      "",
-    ],
-    [
-      "",
-      "FICHA OFICIAL DE JUGADORES",
-      "",
-      "",
+      "LOGO CAMPEONATO",
       "",
     ],
     [],
     [
       "EQUIPO:",
-      team.name,
+      `"${team.name}"`,
       "",
-      "",
+      "LOGO DE EQUIPO",
       "",
     ],
     [
@@ -198,10 +183,10 @@ function createPlayerTemplateSheet({
     [],
     [
       "N°",
-      "APELLIDOS Y NOMBRES",
-      "DNI",
-      "DORSAL",
+      "NOMBRE Y APELLIDOS",
+      "D.N.I.",
       "FIRMA",
+      "DORSAL",
     ],
   ];
 
@@ -226,17 +211,52 @@ function createPlayerTemplateSheet({
       wch: 8,
     },
     {
-      wch: 40,
+      wch: 44,
     },
     {
       wch: 20,
     },
     {
-      wch: 12,
+      wch: 22,
     },
     {
-      wch: 24,
+      wch: 12,
     },
+  ];
+
+  worksheet["!rows"] = [
+    {
+      hpt: 95,
+    },
+    {
+      hpt: 8,
+    },
+    {
+      hpt: 45,
+    },
+    {
+      hpt: 28,
+    },
+    {
+      hpt: 28,
+    },
+    {
+      hpt: 28,
+    },
+    {
+      hpt: 28,
+    },
+    {
+      hpt: 12,
+    },
+    {
+      hpt: 30,
+    },
+    ...Array.from({
+      length: maxPlayers,
+    }).map(() => ({
+      hpt: 30,
+    })),
   ];
 
   worksheet["!merges"] = [
@@ -247,16 +267,36 @@ function createPlayerTemplateSheet({
       },
       e: {
         r: 0,
+        c: 2,
+      },
+    },
+    {
+      s: {
+        r: 0,
+        c: 3,
+      },
+      e: {
+        r: 0,
         c: 4,
       },
     },
     {
       s: {
-        r: 1,
+        r: 2,
         c: 1,
       },
       e: {
-        r: 1,
+        r: 2,
+        c: 2,
+      },
+    },
+    {
+      s: {
+        r: 2,
+        c: 3,
+      },
+      e: {
+        r: 4,
         c: 4,
       },
     },
@@ -267,7 +307,7 @@ function createPlayerTemplateSheet({
       },
       e: {
         r: 3,
-        c: 4,
+        c: 2,
       },
     },
     {
@@ -277,7 +317,7 @@ function createPlayerTemplateSheet({
       },
       e: {
         r: 4,
-        c: 4,
+        c: 2,
       },
     },
     {
@@ -297,16 +337,6 @@ function createPlayerTemplateSheet({
       },
       e: {
         r: 6,
-        c: 4,
-      },
-    },
-    {
-      s: {
-        r: 7,
-        c: 1,
-      },
-      e: {
-        r: 7,
         c: 4,
       },
     },
@@ -385,10 +415,13 @@ function findTeamForSheet(
 
   if (!teamName) return null;
 
+  const cleanTeamName =
+    teamName.replaceAll('"', "").trim();
+
   let candidates = teams.filter(
     (team) =>
       normalizeText(team.name) ===
-      normalizeText(teamName)
+      normalizeText(cleanTeamName)
   );
 
   if (category) {
@@ -417,18 +450,26 @@ function parsePlayersFromRows(
     const thirdColumn =
       normalizeText(cleanText(row[2]));
 
+    const fourthColumn =
+      normalizeText(cleanText(row[3]));
+
+    const fifthColumn =
+      normalizeText(cleanText(row[4]));
+
     return (
-      secondColumn.includes("NOMBRES") ||
-      secondColumn.includes("JUGADOR") ||
+      secondColumn.includes("NOMBRE") ||
+      secondColumn.includes("APELLIDO") ||
       thirdColumn.includes("DNI") ||
-      thirdColumn.includes("DOCUMENTO")
+      thirdColumn.includes("DOCUMENTO") ||
+      fourthColumn.includes("FIRMA") ||
+      fifthColumn.includes("DORSAL")
     );
   });
 
   const startIndex =
     headerIndex >= 0
       ? headerIndex + 1
-      : 10;
+      : 9;
 
   return rows
     .slice(startIndex)
@@ -440,7 +481,7 @@ function parsePlayersFromRows(
         cleanText(row[2]);
 
       const jerseyNumber =
-        cleanText(row[3]);
+        cleanText(row[4]);
 
       return {
         id: generateId(),
@@ -523,7 +564,7 @@ export async function importTeamsFromExcel(
 export function exportPlayerTemplate({
   tournamentName,
   team,
-  maxPlayers = 10,
+  maxPlayers = 18,
 }: {
   tournamentName: string;
   team: Team;
@@ -557,7 +598,7 @@ export function exportPlayerTemplate({
 export function exportAllPlayerTemplates({
   tournamentName,
   teams,
-  maxPlayers = 10,
+  maxPlayers = 18,
 }: {
   tournamentName: string;
   teams: Team[];

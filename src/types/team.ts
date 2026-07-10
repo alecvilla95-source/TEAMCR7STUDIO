@@ -14,4 +14,6 @@ export interface Team {
   delegate1?: string;
 
   delegate2?: string;
+
+  logoDataUrl?: string;
 }
