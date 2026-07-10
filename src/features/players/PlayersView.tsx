@@ -1,7 +1,9 @@
 import {
   useRef,
   useState,
+  type ChangeEvent,
   type CSSProperties,
+  type MutableRefObject,
 } from "react";
 
 import type { Match } from "../../types/match";
@@ -15,19 +17,13 @@ import { useLogo } from "../../store/logoStore";
 import { useFixture } from "../../store/fixtureStore";
 
 import {
+  exportBlankPlayerRegistrationTemplate,
   exportPlayerTemplate,
   exportAllPlayerTemplates,
   importPlayersFromExcel,
   importAllPlayersFromExcel,
+  importRegistrationSheetsFromExcel,
 } from "../../services/excelService";
-
-function getCategoryColor(team: Team) {
-  if (team.category === "WOMEN") {
-    return "#f9a8d4";
-  }
-
-  return "#93c5fd";
-}
 
 function getCategoryLabel(team: Team) {
   if (team.category === "WOMEN") {
@@ -205,7 +201,6 @@ function buildRosterStyles() {
       border: 1.6px solid #111827;
     }
 
-    /* ENCABEZADO SUPERIOR: MÁS ALTO, LOGOS MÁS CUADRADOS */
     .header-table td {
       height: 38mm;
       text-align: center;
@@ -269,7 +264,6 @@ function buildRosterStyles() {
       text-align: center;
     }
 
-    /* DATOS DEL EQUIPO */
     .info-table td {
       height: 8.6mm;
       padding: 2mm;
@@ -329,7 +323,6 @@ function buildRosterStyles() {
       height: 3mm;
     }
 
-    /* TABLA DE JUGADORES: 25 FILAS, OCUPA MEJOR LA HOJA */
     .players-table th {
       height: 7mm;
       padding: 1mm;
@@ -536,20 +529,7 @@ function buildAllRostersHtml({
   players: Player[];
   logoDataUrl: string | null;
 }) {
-  const orderedTeams = [...teams].sort((a, b) => {
-    const categoryA = a.category === "WOMEN" ? 2 : 1;
-    const categoryB = b.category === "WOMEN" ? 2 : 1;
-
-    if (categoryA !== categoryB) {
-      return categoryA - categoryB;
-    }
-
-    if ((a.assignedCourt ?? 0) !== (b.assignedCourt ?? 0)) {
-      return (a.assignedCourt ?? 0) - (b.assignedCourt ?? 0);
-    }
-
-    return a.name.localeCompare(b.name);
-  });
+  const orderedTeams = sortTeams(teams);
 
   const sheets = orderedTeams
     .map((team) => {
@@ -599,6 +579,23 @@ function buildAllRostersHtml({
   `;
 }
 
+function sortTeams(teams: Team[]) {
+  return [...teams].sort((a, b) => {
+    const categoryA = a.category === "WOMEN" ? 2 : 1;
+    const categoryB = b.category === "WOMEN" ? 2 : 1;
+
+    if (categoryA !== categoryB) {
+      return categoryA - categoryB;
+    }
+
+    if ((a.assignedCourt ?? 0) !== (b.assignedCourt ?? 0)) {
+      return (a.assignedCourt ?? 0) - (b.assignedCourt ?? 0);
+    }
+
+    return a.name.localeCompare(b.name);
+  });
+}
+
 function updateTeamInsideMatch(
   match: Match,
   teamId: number,
@@ -633,6 +630,37 @@ function updateTeamInsideMatch(
   };
 }
 
+function mergeImportedTeams(
+  currentTeams: Team[],
+  importedTeams: Team[]
+) {
+  const teamMap = new Map<number, Team>();
+
+  currentTeams.forEach((team) => {
+    teamMap.set(team.id, team);
+  });
+
+  importedTeams.forEach((team) => {
+    const current = teamMap.get(team.id);
+
+    if (current) {
+      teamMap.set(team.id, {
+        ...current,
+        ...team,
+        logoDataUrl:
+          team.logoDataUrl ??
+          current.logoDataUrl,
+      });
+
+      return;
+    }
+
+    teamMap.set(team.id, team);
+  });
+
+  return sortTeams(Array.from(teamMap.values()));
+}
+
 export default function PlayersView() {
   const { tournament } = useTournament();
 
@@ -664,6 +692,9 @@ export default function PlayersView() {
   const allUploadRef =
     useRef<HTMLInputElement | null>(null);
 
+  const registrationUploadRef =
+    useRef<HTMLInputElement | null>(null);
+
   const menTeams = teams.filter(
     (team) => team.category !== "WOMEN"
   );
@@ -671,6 +702,46 @@ export default function PlayersView() {
   const womenTeams = teams.filter(
     (team) => team.category === "WOMEN"
   );
+
+  function updateFixtureWithTeams(updatedTeams: Team[]) {
+    const teamMap = new Map<number, Team>();
+
+    updatedTeams.forEach((team) => {
+      teamMap.set(team.id, team);
+    });
+
+    const nextFixture = fixture.map((match) => {
+      let updatedMatch = match;
+
+      if (match.teamA && teamMap.has(match.teamA.id)) {
+        updatedMatch = updateTeamInsideMatch(
+          updatedMatch,
+          match.teamA.id,
+          teamMap.get(match.teamA.id)!
+        );
+      }
+
+      if (match.teamB && teamMap.has(match.teamB.id)) {
+        updatedMatch = updateTeamInsideMatch(
+          updatedMatch,
+          match.teamB.id,
+          teamMap.get(match.teamB.id)!
+        );
+      }
+
+      if (match.winner && teamMap.has(match.winner.id)) {
+        updatedMatch = updateTeamInsideMatch(
+          updatedMatch,
+          match.winner.id,
+          teamMap.get(match.winner.id)!
+        );
+      }
+
+      return updatedMatch;
+    });
+
+    setFixture(nextFixture);
+  }
 
   function updateTeamEverywhere(
     teamId: number,
@@ -794,7 +865,7 @@ export default function PlayersView() {
   }
 
   async function uploadTeamLogo(
-    event: React.ChangeEvent<HTMLInputElement>,
+    event: ChangeEvent<HTMLInputElement>,
     team: Team
   ) {
     const file =
@@ -849,6 +920,115 @@ export default function PlayersView() {
     );
   }
 
+  function downloadBlankRegistrationTemplate() {
+    exportBlankPlayerRegistrationTemplate({
+      tournamentName: tournament?.name ?? "Campeonato",
+      maxPlayers: 25,
+    });
+  }
+
+  async function uploadRegistrationSheets(
+    event: ChangeEvent<HTMLInputElement>
+  ) {
+    const files =
+      Array.from(event.target.files ?? []);
+
+    if (files.length === 0) return;
+
+    try {
+      let workingTeams = teams;
+
+      const importedTeamMap =
+        new Map<number, Team>();
+
+      const playersByTeam =
+        new Map<number, Player[]>();
+
+      let totalSheets = 0;
+      let newTeams = 0;
+      let updatedTeams = 0;
+
+      for (const file of files) {
+        const imported =
+          await importRegistrationSheetsFromExcel(
+            file,
+            workingTeams
+          );
+
+        imported.forEach((item) => {
+          totalSheets++;
+
+          importedTeamMap.set(
+            item.team.id,
+            item.team
+          );
+
+          playersByTeam.set(
+            item.team.id,
+            item.players
+          );
+
+          if (item.isNewTeam) {
+            newTeams++;
+          } else {
+            updatedTeams++;
+          }
+        });
+
+        workingTeams = mergeImportedTeams(
+          workingTeams,
+          imported.map((item) => item.team)
+        );
+      }
+
+      if (totalSheets === 0) {
+        alert(
+          "No se encontró ninguna ficha válida. Revisa que el Excel tenga Equipo, Delegado, Categoría, Cancha y jugadores."
+        );
+
+        return;
+      }
+
+      const finalTeams =
+        mergeImportedTeams(
+          teams,
+          Array.from(importedTeamMap.values())
+        );
+
+      setTeams(finalTeams);
+
+      updateFixtureWithTeams(
+        Array.from(importedTeamMap.values())
+      );
+
+      const importedTeamIds =
+        new Set(playersByTeam.keys());
+
+      const remainingPlayers =
+        players.filter(
+          (player) => !importedTeamIds.has(player.teamId)
+        );
+
+      const importedPlayers =
+        Array.from(playersByTeam.values()).flat();
+
+      setPlayers([
+        ...remainingPlayers,
+        ...importedPlayers,
+      ]);
+
+      alert(
+        `Fichas importadas correctamente.\n\nEquipos nuevos: ${newTeams}\nEquipos actualizados: ${updatedTeams}\nJugadores importados: ${importedPlayers.length}`
+      );
+    } catch {
+      alert(
+        "No se pudo importar la ficha de inscripción. Revisa que sea un Excel válido."
+      );
+    } finally {
+      event.target.value = "";
+    }
+  }
+
   function downloadTemplate(team: Team) {
     exportPlayerTemplate({
       tournamentName: tournament?.name ?? "Campeonato",
@@ -900,7 +1080,7 @@ export default function PlayersView() {
   }
 
   async function uploadAllTemplates(
-    event: React.ChangeEvent<HTMLInputElement>
+    event: ChangeEvent<HTMLInputElement>
   ) {
     const file =
       event.target.files?.[0];
@@ -960,7 +1140,7 @@ export default function PlayersView() {
   }
 
   async function uploadTemplate(
-    event: React.ChangeEvent<HTMLInputElement>,
+    event: ChangeEvent<HTMLInputElement>,
     team: Team
   ) {
     const file =
@@ -1034,8 +1214,9 @@ export default function PlayersView() {
                 marginBottom: 0,
               }}
             >
-              Descarga las fichas Excel, entrégalas para que las rellenen y
-              luego súbelas al sistema.
+              Descarga la ficha general, envíala a los equipos,
+              recibe sus Excel llenos y súbelos para registrar
+              equipos y jugadores.
             </p>
 
             {logoDataUrl && (
@@ -1047,10 +1228,37 @@ export default function PlayersView() {
 
           <div style={headerActions}>
             <button
+              onClick={downloadBlankRegistrationTemplate}
+              style={registrationDownloadButton}
+            >
+              📥 Descargar ficha general para equipos
+            </button>
+
+            <input
+              ref={registrationUploadRef}
+              type="file"
+              accept=".xlsx,.xls"
+              multiple
+              style={{
+                display: "none",
+              }}
+              onChange={uploadRegistrationSheets}
+            />
+
+            <button
+              onClick={() =>
+                registrationUploadRef.current?.click()
+              }
+              style={registrationUploadButton}
+            >
+              📤 Subir fichas llenas y registrar equipos
+            </button>
+
+            <button
               onClick={downloadAllTemplates}
               style={allDownloadButton}
             >
-              📥 Descargar todas las fichas Excel
+              📥 Descargar fichas de equipos registrados
             </button>
 
             <input
@@ -1067,7 +1275,7 @@ export default function PlayersView() {
               onClick={() => allUploadRef.current?.click()}
               style={allUploadButton}
             >
-              📤 Subir todas las fichas llenas
+              📤 Subir fichas de equipos registrados
             </button>
 
             <button
@@ -1077,6 +1285,12 @@ export default function PlayersView() {
               📄 Imprimir todas las fichas
             </button>
           </div>
+        </div>
+
+        <div style={workflowBox}>
+          <strong>Flujo recomendado:</strong>{" "}
+          Descargar ficha general → enviarla a equipos → recibir Excel llenos →
+          subir fichas → generar fixture.
         </div>
       </div>
 
@@ -1098,7 +1312,21 @@ export default function PlayersView() {
           value={teams.length}
           color="#facc15"
         />
+
+        <SummaryBox
+          title="Jugadores"
+          value={players.length}
+          color="#22c55e"
+        />
       </div>
+
+      {teams.length === 0 && (
+        <div style={emptyIntroBox}>
+          Todavía no hay equipos registrados. Descarga la ficha general,
+          entrégala a los equipos y luego súbela para crear el registro
+          automáticamente.
+        </div>
+      )}
 
       <TeamSection
         title="⚽ VARONES"
@@ -1157,21 +1385,21 @@ function TeamSection({
   color: string;
   expandedTeamId: number | null;
   setExpandedTeamId: (teamId: number | null) => void;
-  fileRefs: React.MutableRefObject<
+  fileRefs: MutableRefObject<
     Record<number, HTMLInputElement | null>
   >;
-  logoFileRefs: React.MutableRefObject<
+  logoFileRefs: MutableRefObject<
     Record<number, HTMLInputElement | null>
   >;
   getPlayersByTeam: (teamId: number) => Player[];
   onDownload: (team: Team) => void;
   onUpload: (
-    event: React.ChangeEvent<HTMLInputElement>,
+    event: ChangeEvent<HTMLInputElement>,
     team: Team
   ) => void;
   onPrint: (team: Team) => void;
   onLogoUpload: (
-    event: React.ChangeEvent<HTMLInputElement>,
+    event: ChangeEvent<HTMLInputElement>,
     team: Team
   ) => void;
   onLogoRemove: (team: Team) => void;
@@ -1212,7 +1440,7 @@ function TeamSection({
 
           <div style={teamGrid}>
             {group.teams.map((team) => {
-              const players =
+              const teamPlayers =
                 getPlayersByTeam(team.id);
 
               const expanded =
@@ -1222,7 +1450,7 @@ function TeamSection({
                 <TeamPlayerCard
                   key={team.id}
                   team={team}
-                  players={players}
+                  players={teamPlayers}
                   color={color}
                   expanded={expanded}
                   onToggle={() =>
@@ -1293,12 +1521,12 @@ function TeamPlayerCard({
   onDownload: () => void;
   onUploadClick: () => void;
   onUpload: (
-    event: React.ChangeEvent<HTMLInputElement>
+    event: ChangeEvent<HTMLInputElement>
   ) => void;
   onPrint: () => void;
   onLogoUploadClick: () => void;
   onLogoUpload: (
-    event: React.ChangeEvent<HTMLInputElement>
+    event: ChangeEvent<HTMLInputElement>
   ) => void;
   onLogoRemove: () => void;
 }) {
@@ -1593,7 +1821,7 @@ function groupTeamsByCourt(teams: Team[]) {
 
       return {
         label,
-        teams: list,
+        teams: sortTeams(list),
       };
     });
 }
@@ -1607,9 +1835,11 @@ const headerBox: CSSProperties = {
 };
 
 const headerActions: CSSProperties = {
-  display: "flex",
+  display: "grid",
+  gridTemplateColumns:
+    "repeat(auto-fit, minmax(230px, 1fr))",
   gap: 12,
-  flexWrap: "wrap",
+  width: "min(760px, 100%)",
 };
 
 const logoNotice: CSSProperties = {
@@ -1621,6 +1851,15 @@ const logoNotice: CSSProperties = {
   padding: 10,
   fontWeight: "bold",
   display: "inline-block",
+};
+
+const workflowBox: CSSProperties = {
+  marginTop: 18,
+  background: "#0f172a",
+  border: "1px solid #334155",
+  borderRadius: 12,
+  padding: 14,
+  color: "#cbd5e1",
 };
 
 const summaryGrid: CSSProperties = {
@@ -1694,6 +1933,26 @@ const buttonGrid: CSSProperties = {
   gridTemplateColumns:
     "repeat(auto-fit, minmax(150px, 1fr))",
   gap: 10,
+};
+
+const registrationDownloadButton: CSSProperties = {
+  padding: "14px 18px",
+  background: "#facc15",
+  color: "#111827",
+  border: "none",
+  borderRadius: 10,
+  cursor: "pointer",
+  fontWeight: "bold",
+};
+
+const registrationUploadButton: CSSProperties = {
+  padding: "14px 18px",
+  background: "#0ea5e9",
+  color: "white",
+  border: "none",
+  borderRadius: 10,
+  cursor: "pointer",
+  fontWeight: "bold",
 };
 
 const allDownloadButton: CSSProperties = {
@@ -1773,6 +2032,16 @@ const emptyBox: CSSProperties = {
   borderRadius: 10,
   padding: 14,
   color: "#94a3b8",
+};
+
+const emptyIntroBox: CSSProperties = {
+  marginTop: 25,
+  background: "#0f172a",
+  border: "1px solid #334155",
+  borderRadius: 14,
+  padding: 22,
+  color: "#cbd5e1",
+  textAlign: "center",
 };
 
 const tableStyle: CSSProperties = {

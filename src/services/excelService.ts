@@ -18,6 +18,15 @@ export interface ImportedTeamPlayers {
   delegate2: string;
 }
 
+export interface ImportedRegistrationSheet {
+  team: Team;
+  players: Player[];
+  sheetName: string;
+  delegate1: string;
+  delegate2: string;
+  isNewTeam: boolean;
+}
+
 function cleanText(value: unknown) {
   return String(value ?? "").trim();
 }
@@ -37,7 +46,8 @@ function sanitizeFileName(value: string) {
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .replace(/[^a-zA-Z0-9-_ ]/g, "")
-    .replace(/\s+/g, "_");
+    .replace(/\s+/g, "_")
+    .trim();
 }
 
 function sanitizeSheetName(value: string) {
@@ -80,20 +90,33 @@ function generateId() {
   return `${Date.now()}-${Math.random()}`;
 }
 
-function getFootballCategoryLabel(team: Team) {
-  if (team.category === "WOMEN") {
+function getNextTeamId(teams: Team[]) {
+  const maxId = teams.reduce(
+    (max, team) => Math.max(max, team.id),
+    0
+  );
+
+  return maxId + 1;
+}
+
+function getFootballCategoryLabel(team?: Partial<Team> | null) {
+  if (team?.category === "WOMEN") {
     return "FÚTBOL FEMENINO";
   }
 
   return "FÚTBOL MASCULINO";
 }
 
-function getCourtLabel(team: Team) {
-  if (team.category === "WOMEN") {
-    return `C. Mujer ${team.assignedCourt ?? "-"}`;
+function getCourtLabel(team?: Partial<Team> | null) {
+  if (!team?.assignedCourt) {
+    return "";
   }
 
-  return `Cancha ${team.assignedCourt ?? "-"}`;
+  if (team.category === "WOMEN") {
+    return `C. Mujer ${team.assignedCourt}`;
+  }
+
+  return `Cancha ${team.assignedCourt}`;
 }
 
 function downloadWorkbook(
@@ -133,7 +156,7 @@ function createPlayerTemplateSheet({
   maxPlayers = 25,
 }: {
   tournamentName: string;
-  team: Team;
+  team?: Partial<Team> | null;
   maxPlayers?: number;
 }) {
   const rows: Array<Array<string | number>> = [
@@ -147,35 +170,39 @@ function createPlayerTemplateSheet({
     [],
     [
       "EQUIPO:",
-      `"${team.name}"`,
+      team?.name ?? "",
       "",
       "LOGO DE EQUIPO",
       "",
     ],
     [
       "DELEGADO 1:",
-      team.delegate1 ?? "",
+      team?.delegate1 ?? "",
       "",
       "",
       "",
     ],
     [
       "DELEGADO 2:",
-      team.delegate2 ?? "",
+      team?.delegate2 ?? "",
       "",
       "",
       "",
     ],
     [
       "CATEGORIA:",
-      getFootballCategoryLabel(team),
+      team?.category
+        ? getFootballCategoryLabel(team)
+        : "FÚTBOL MASCULINO",
       "",
       "",
       "",
     ],
     [
       "CANCHA:",
-      getCourtLabel(team),
+      team?.assignedCourt
+        ? getCourtLabel(team)
+        : "",
       "",
       "",
       "",
@@ -322,7 +349,8 @@ function getCategoryFromMeta(value: string): Team["category"] {
 
   if (
     normalized.includes("MUJER") ||
-    normalized.includes("FEMENINO")
+    normalized.includes("FEMENINO") ||
+    normalized.includes("WOMEN")
   ) {
     return "WOMEN";
   }
@@ -330,12 +358,13 @@ function getCategoryFromMeta(value: string): Team["category"] {
   if (
     normalized.includes("VARON") ||
     normalized.includes("HOMBRE") ||
-    normalized.includes("MASCULINO")
+    normalized.includes("MASCULINO") ||
+    normalized.includes("MEN")
   ) {
     return "MEN";
   }
 
-  return undefined;
+  return "MEN";
 }
 
 function getCourtNumberFromMeta(value: string) {
@@ -480,6 +509,82 @@ function parsePlayerSheet(
   };
 }
 
+function buildTeamFromRegistrationSheet({
+  rows,
+  teams,
+  nextId,
+}: {
+  rows: Array<Array<string | number>>;
+  teams: Team[];
+  nextId: number;
+}) {
+  const teamName =
+    getMetaValue(rows, "Equipo")
+      .replaceAll('"', "")
+      .trim();
+
+  if (!teamName) {
+    return null;
+  }
+
+  const delegate1 =
+    getMetaValue(rows, "Delegado 1");
+
+  const delegate2 =
+    getMetaValue(rows, "Delegado 2");
+
+  const categoryText =
+    getMetaValue(rows, "Categoria");
+
+  const courtText =
+    getMetaValue(rows, "Cancha");
+
+  const category =
+    getCategoryFromMeta(categoryText) ?? "MEN";
+
+  const assignedCourt =
+    getCourtNumberFromMeta(courtText);
+
+  const existingTeam = teams.find((team) => {
+    const sameName =
+      normalizeText(team.name) ===
+      normalizeText(teamName);
+
+    const sameCategory =
+      (team.category ?? "MEN") === category;
+
+    return sameName && sameCategory;
+  });
+
+  if (existingTeam) {
+    return {
+      team: {
+        ...existingTeam,
+        delegate1,
+        delegate2,
+        assignedCourt:
+          assignedCourt ?? existingTeam.assignedCourt,
+        category,
+      },
+      isNewTeam: false,
+    };
+  }
+
+  const newTeam: Team = {
+    id: nextId,
+    name: teamName,
+    category,
+    assignedCourt,
+    delegate1,
+    delegate2,
+  };
+
+  return {
+    team: newTeam,
+    isNewTeam: true,
+  };
+}
+
 export async function importTeamsFromExcel(
   file: File
 ): Promise<string[]> {
@@ -511,6 +616,38 @@ export async function importTeamsFromExcel(
 
       return true;
     });
+}
+
+export function exportBlankPlayerRegistrationTemplate({
+  tournamentName,
+  maxPlayers = 25,
+}: {
+  tournamentName: string;
+  maxPlayers?: number;
+}) {
+  const workbook = XLSX.utils.book_new();
+
+  const worksheet = createPlayerTemplateSheet({
+    tournamentName,
+    team: null,
+    maxPlayers,
+  });
+
+  XLSX.utils.book_append_sheet(
+    workbook,
+    worksheet,
+    "Ficha Inscripcion"
+  );
+
+  const filename =
+    `Ficha_Inscripcion_${sanitizeFileName(
+      tournamentName || "TEAMCR7STUDIO"
+    )}.xlsx`;
+
+  downloadWorkbook(
+    workbook,
+    filename
+  );
 }
 
 export function exportPlayerTemplate({
@@ -675,6 +812,60 @@ export async function importAllPlayersFromExcel(
       sheetName,
       delegate1: parsed.delegate1,
       delegate2: parsed.delegate2,
+    });
+  });
+
+  return imported;
+}
+
+export async function importRegistrationSheetsFromExcel(
+  file: File,
+  teams: Team[]
+): Promise<ImportedRegistrationSheet[]> {
+  const data = await file.arrayBuffer();
+
+  const workbook = XLSX.read(data);
+
+  const imported: ImportedRegistrationSheet[] = [];
+
+  let nextId = getNextTeamId(teams);
+
+  const currentTeams = [...teams];
+
+  workbook.SheetNames.forEach((sheetName) => {
+    const sheet = workbook.Sheets[sheetName];
+
+    const rows = getRowsFromSheet(sheet);
+
+    const builtTeam =
+      buildTeamFromRegistrationSheet({
+        rows,
+        teams: currentTeams,
+        nextId,
+      });
+
+    if (!builtTeam) return;
+
+    if (builtTeam.isNewTeam) {
+      nextId++;
+      currentTeams.push(builtTeam.team);
+    }
+
+    const players =
+      parsePlayersFromRows(
+        rows,
+        builtTeam.team
+      );
+
+    imported.push({
+      team: builtTeam.team,
+      players,
+      sheetName,
+      delegate1:
+        builtTeam.team.delegate1 ?? "",
+      delegate2:
+        builtTeam.team.delegate2 ?? "",
+      isNewTeam: builtTeam.isNewTeam,
     });
   });
 
