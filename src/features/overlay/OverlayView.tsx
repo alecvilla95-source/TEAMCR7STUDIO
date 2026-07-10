@@ -24,6 +24,13 @@ import { applyResult } from "../../engine/resultEngine";
 const ACTIVE_MATCH_STORAGE_KEY =
   "teamcr7studio_active_match_id";
 
+const OVERLAY_MODE_STORAGE_KEY =
+  "teamcr7studio_overlay_mode";
+
+type OverlayMode =
+  | "SINGLE"
+  | "MULTI";
+
 function createId() {
   if (crypto.randomUUID) {
     return crypto.randomUUID();
@@ -66,6 +73,16 @@ function readStoredActiveMatchId() {
   return parsed;
 }
 
+function readStoredOverlayMode(): OverlayMode {
+  const value = localStorage.getItem(
+    OVERLAY_MODE_STORAGE_KEY
+  );
+
+  if (value === "MULTI") return "MULTI";
+
+  return "SINGLE";
+}
+
 function getCourtLabel(match: Match) {
   if (match.courtLabel) {
     return match.courtLabel;
@@ -76,6 +93,34 @@ function getCourtLabel(match: Match) {
   }
 
   return `Cancha ${match.court || "-"}`;
+}
+
+function getTimeKey(match: Match) {
+  return (match.time || "").trim();
+}
+
+function getCategoryName(match: Match) {
+  if (match.category === "WOMEN") {
+    return "MUJERES";
+  }
+
+  return "VARONES";
+}
+
+function getStageText(match: Match) {
+  if (match.groupName) return match.groupName;
+
+  if (match.stage === "GROUP") return "GRUPOS";
+
+  if (
+    (match.courtLabel ?? "")
+      .toUpperCase()
+      .includes("FINAL")
+  ) {
+    return "FINAL";
+  }
+
+  return "ELIMINACIÓN";
 }
 
 function getMatchLabel(match: Match) {
@@ -95,7 +140,9 @@ function getMatchLabel(match: Match) {
         : "Por definir"
     );
 
-  return `P${match.id} | ${getCourtLabel(match)} | ${teamA} vs ${teamB}`;
+  return `P${match.id} | ${match.time || "--:--"} | ${getCourtLabel(
+    match
+  )} | ${teamA} vs ${teamB}`;
 }
 
 function getTeamWithLogo(
@@ -130,10 +177,53 @@ function getStatusText(
   }
 
   if (isRunning) {
-    return "PARTIDO EN VIVO";
+    return "PARTIDO EN JUEGO";
   }
 
   return "CRONÓMETRO PAUSADO";
+}
+
+function sortMatchesForOverlay(matches: Match[]) {
+  return [...matches].sort((a, b) => {
+    const categoryA = a.category === "WOMEN" ? 2 : 1;
+    const categoryB = b.category === "WOMEN" ? 2 : 1;
+
+    if (categoryA !== categoryB) {
+      return categoryA - categoryB;
+    }
+
+    if ((a.court ?? 0) !== (b.court ?? 0)) {
+      return (a.court ?? 0) - (b.court ?? 0);
+    }
+
+    if (a.round !== b.round) {
+      return a.round - b.round;
+    }
+
+    return a.id - b.id;
+  });
+}
+
+function getSimultaneousMatches(
+  fixture: Match[],
+  selectedMatch: Match | null
+) {
+  if (!selectedMatch) return [];
+
+  const selectedTime = getTimeKey(selectedMatch);
+
+  if (!selectedTime) {
+    return [selectedMatch];
+  }
+
+  return sortMatchesForOverlay(
+    fixture.filter(
+      (match) =>
+        getTimeKey(match) === selectedTime &&
+        match.teamA &&
+        match.teamB
+    )
+  );
 }
 
 export default function OverlayView() {
@@ -180,6 +270,11 @@ export default function OverlayView() {
       readStoredActiveMatchId()
     );
 
+  const [overlayMode, setOverlayModeState] =
+    useState<OverlayMode>(() =>
+      readStoredOverlayMode()
+    );
+
   const [minutesInput, setMinutesInput] =
     useState(() =>
       Math.max(
@@ -204,32 +299,43 @@ export default function OverlayView() {
   }, [durationSeconds]);
 
   useEffect(() => {
-    function syncStoredMatch() {
+    function syncStoredData() {
       setStoredMatchId(readStoredActiveMatchId());
+      setOverlayModeState(readStoredOverlayMode());
     }
 
     window.addEventListener(
       "storage",
-      syncStoredMatch
+      syncStoredData
     );
 
     window.addEventListener(
       "focus",
-      syncStoredMatch
+      syncStoredData
+    );
+
+    window.addEventListener(
+      "teamcr7studio_overlay_mode_sync",
+      syncStoredData
     );
 
     const interval =
-      window.setInterval(syncStoredMatch, 500);
+      window.setInterval(syncStoredData, 500);
 
     return () => {
       window.removeEventListener(
         "storage",
-        syncStoredMatch
+        syncStoredData
       );
 
       window.removeEventListener(
         "focus",
-        syncStoredMatch
+        syncStoredData
+      );
+
+      window.removeEventListener(
+        "teamcr7studio_overlay_mode_sync",
+        syncStoredData
       );
 
       window.clearInterval(interval);
@@ -269,6 +375,25 @@ export default function OverlayView() {
     nextMatch ??
     lastFinished ??
     null;
+
+  const simultaneousMatches =
+    getSimultaneousMatches(
+      fixture,
+      match
+    );
+
+  function setOverlayMode(mode: OverlayMode) {
+    setOverlayModeState(mode);
+
+    localStorage.setItem(
+      OVERLAY_MODE_STORAGE_KEY,
+      mode
+    );
+
+    window.dispatchEvent(
+      new Event("teamcr7studio_overlay_mode_sync")
+    );
+  }
 
   function selectMatch(matchId: number) {
     setActiveMatchId(matchId);
@@ -473,6 +598,10 @@ export default function OverlayView() {
               fixture={fixture}
               selectedMatch={null}
               selectedMatchId={selectedMatchId}
+              overlayMode={overlayMode}
+              setOverlayMode={setOverlayMode}
+              simultaneousCount={0}
+              simultaneousTime=""
               secondsLeft={secondsLeft}
               durationSeconds={durationSeconds}
               isRunning={isRunning}
@@ -499,20 +628,6 @@ export default function OverlayView() {
     );
   }
 
-  const teamA = getTeamWithLogo(
-    match.teamA,
-    teamMap
-  );
-
-  const teamB = getTeamWithLogo(
-    match.teamB,
-    teamMap
-  );
-
-  const hasPenalties =
-    match.penaltyA !== undefined &&
-    match.penaltyB !== undefined;
-
   return (
     <main
       style={{
@@ -525,79 +640,34 @@ export default function OverlayView() {
           : "hidden",
       }}
     >
-      <section style={topBarStyle}>
-        <div style={brandBoxStyle}>
-          <img
-            src="/teamcr7studio-logo.png"
-            alt="TEAMCR7STUDIO"
-            style={brandLogoStyle}
-          />
-
-          <div style={brandTextStyle}>
-            {tournament?.name ?? "TEAMCR7STUDIO"}
-          </div>
-        </div>
-
-        <div style={topInfoStyle}>
-          <span>
-            ⏱ {formatTime(secondsLeft)}
-          </span>
-
-          <span>
-            🏟 {getCourtLabel(match)}
-          </span>
-        </div>
-      </section>
-
-      <section style={scoreboardStyle}>
-        <TeamPanel
-          side="left"
-          team={teamA}
-          name={getTeamName(
-            teamA,
-            match.sourceMatchA
-              ? `Ganador Partido ${match.sourceMatchA}`
-              : "Por definir"
-          )}
-          score={match.scoreA}
-          penalty={match.penaltyA}
-          hasPenalties={hasPenalties}
+      {overlayMode === "MULTI" ? (
+        <MultiCourtOverlay
+          tournamentName={tournament?.name ?? "TEAMCR7STUDIO"}
+          matches={simultaneousMatches}
+          selectedMatch={match}
+          teamMap={teamMap}
+          secondsLeft={secondsLeft}
+          isRunning={isRunning}
         />
-
-        <div style={vsStyle}>
-          VS
-        </div>
-
-        <TeamPanel
-          side="right"
-          team={teamB}
-          name={getTeamName(
-            teamB,
-            match.sourceMatchB
-              ? `Ganador Partido ${match.sourceMatchB}`
-              : "Por definir"
-          )}
-          score={match.scoreB}
-          penalty={match.penaltyB}
-          hasPenalties={hasPenalties}
+      ) : (
+        <SingleMatchOverlay
+          tournamentName={tournament?.name ?? "TEAMCR7STUDIO"}
+          match={match}
+          teamMap={teamMap}
+          secondsLeft={secondsLeft}
+          isRunning={isRunning}
         />
-      </section>
-
-      {hasPenalties && (
-        <section style={penaltyBannerStyle}>
-          Definido por penales: {match.penaltyA} - {match.penaltyB}
-        </section>
       )}
-
-      <section style={bottomBarStyle}>
-        {getStatusText(match, isRunning)}
-      </section>
 
       {isControlMode && (
         <ControlPanel
           fixture={fixture}
           selectedMatch={match}
           selectedMatchId={selectedMatchId}
+          overlayMode={overlayMode}
+          setOverlayMode={setOverlayMode}
+          simultaneousCount={simultaneousMatches.length}
+          simultaneousTime={match.time || "--:--"}
           secondsLeft={secondsLeft}
           durationSeconds={durationSeconds}
           isRunning={isRunning}
@@ -645,72 +715,372 @@ export default function OverlayView() {
   );
 }
 
-function TeamPanel({
-  team,
-  name,
-  score,
-  penalty,
-  hasPenalties,
-  side,
+function SingleMatchOverlay({
+  tournamentName,
+  match,
+  teamMap,
+  secondsLeft,
+  isRunning,
 }: {
-  team: Team | null;
-  name: string;
-  score: number;
-  penalty?: number;
-  hasPenalties: boolean;
-  side: "left" | "right";
+  tournamentName: string;
+  match: Match;
+  teamMap: Map<number, Team>;
+  secondsLeft: number;
+  isRunning: boolean;
 }) {
-  const headerStyle: CSSProperties = {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 24,
-    flexDirection:
-      side === "left" ? "row" : "row-reverse",
-  };
+  const teamA = getTeamWithLogo(
+    match.teamA,
+    teamMap
+  );
 
-  const nameStyle: CSSProperties = {
-    fontSize: 40,
-    fontWeight: 900,
-    lineHeight: 1.05,
-    textTransform: "uppercase",
-    wordBreak: "break-word",
-    textAlign:
-      side === "left" ? "left" : "right",
-    flex: 1,
-  };
+  const teamB = getTeamWithLogo(
+    match.teamB,
+    teamMap
+  );
+
+  const hasPenalties =
+    match.penaltyA !== undefined &&
+    match.penaltyB !== undefined;
 
   return (
-    <article style={teamPanelStyle}>
-      <div style={headerStyle}>
-        <TeamLogo team={team} />
+    <section style={singleOverlayShellStyle}>
+      <OverlayHeader tournamentName={tournamentName} />
 
-        <div style={nameStyle}>
-          {name}
+      <section style={singleScoreboardStyle}>
+        <TeamCircleLogo team={teamA} />
+
+        <TeamNamePlate
+          team={teamA}
+          name={getTeamName(
+            teamA,
+            match.sourceMatchA
+              ? `Ganador Partido ${match.sourceMatchA}`
+              : "Por definir"
+          )}
+          side="left"
+        />
+
+        <CenterScoreBox
+          scoreA={match.scoreA}
+          scoreB={match.scoreB}
+          secondsLeft={secondsLeft}
+          isRunning={isRunning}
+          courtLabel={getCourtLabel(match)}
+          hasPenalties={hasPenalties}
+          penaltyA={match.penaltyA}
+          penaltyB={match.penaltyB}
+        />
+
+        <TeamNamePlate
+          team={teamB}
+          name={getTeamName(
+            teamB,
+            match.sourceMatchB
+              ? `Ganador Partido ${match.sourceMatchB}`
+              : "Por definir"
+          )}
+          side="right"
+        />
+
+        <TeamCircleLogo team={teamB} />
+      </section>
+
+      <LowerInfoBar
+        match={match}
+        tournamentName={tournamentName}
+        isRunning={isRunning}
+      />
+
+      <SponsorStrip />
+    </section>
+  );
+}
+
+function MultiCourtOverlay({
+  tournamentName,
+  matches,
+  selectedMatch,
+  teamMap,
+  secondsLeft,
+  isRunning,
+}: {
+  tournamentName: string;
+  matches: Match[];
+  selectedMatch: Match;
+  teamMap: Map<number, Team>;
+  secondsLeft: number;
+  isRunning: boolean;
+}) {
+  return (
+    <section style={multiOverlayShellStyle}>
+      <OverlayHeader tournamentName={tournamentName} />
+
+      <section style={multiTitleBoxStyle}>
+        <div>
+          <div style={multiSmallTitleStyle}>
+            TORNEO RELÁMPAGO EN VIVO
+          </div>
+
+          <h1 style={multiMainTitleStyle}>
+            PARTIDOS SIMULTÁNEOS
+          </h1>
+
+          <p style={multiSubtitleStyle}>
+            Horario: <strong>{selectedMatch.time || "--:--"}</strong> |{" "}
+            {matches.length} cancha(s) jugando al mismo tiempo
+          </p>
+        </div>
+
+        <div style={multiTimerBoxStyle}>
+          <div style={multiTimerStyle}>
+            {formatTime(secondsLeft)}
+          </div>
+
+          <div
+            style={{
+              ...multiLiveBadgeStyle,
+              color: isRunning ? "#bbf7d0" : "#fef3c7",
+              borderColor: isRunning ? "#22c55e" : "#facc15",
+              background: isRunning ? "#064e3b" : "#713f12",
+            }}
+          >
+            {isRunning ? "EN VIVO" : "PAUSADO"}
+          </div>
+        </div>
+      </section>
+
+      <section style={multiGridStyle}>
+        {matches.map((match) => (
+          <MultiMatchCard
+            key={match.id}
+            match={match}
+            teamMap={teamMap}
+            isRunning={isRunning}
+          />
+        ))}
+      </section>
+
+      <section style={multiBottomBarStyle}>
+        <InfoItem
+          icon="⚡"
+          title="MODO MULTICANCHA"
+          subtitle="Todos los partidos del mismo horario"
+        />
+
+        <InfoItem
+          icon="🏆"
+          title="FASE"
+          subtitle={getStageText(selectedMatch)}
+        />
+
+        <InfoItem
+          icon="#"
+          title="#TEAMCR7STUDIO"
+          subtitle="PASIÓN POR EL FÚTBOL"
+        />
+      </section>
+
+      <SponsorStrip />
+    </section>
+  );
+}
+
+function MultiMatchCard({
+  match,
+  teamMap,
+  isRunning,
+}: {
+  match: Match;
+  teamMap: Map<number, Team>;
+  isRunning: boolean;
+}) {
+  const teamA = getTeamWithLogo(
+    match.teamA,
+    teamMap
+  );
+
+  const teamB = getTeamWithLogo(
+    match.teamB,
+    teamMap
+  );
+
+  return (
+    <article
+      style={{
+        ...multiCardStyle,
+        borderColor:
+          match.category === "WOMEN"
+            ? "#f9a8d4"
+            : "#38bdf8",
+      }}
+    >
+      <div style={multiCardTopStyle}>
+        <div>
+          <div
+            style={{
+              ...multiCategoryStyle,
+              color:
+                match.category === "WOMEN"
+                  ? "#f9a8d4"
+                  : "#38bdf8",
+            }}
+          >
+            {getCategoryName(match)}
+          </div>
+
+          <div style={multiCourtStyle}>
+            {getCourtLabel(match)}
+          </div>
+        </div>
+
+        <div style={multiCardTimeStyle}>
+          {match.time || "--:--"}
         </div>
       </div>
 
-      <div style={scoreStyle}>
-        {score}
+      <div style={multiTeamsGridStyle}>
+        <MiniTeamSide
+          team={teamA}
+          name={getTeamName(
+            teamA,
+            match.sourceMatchA
+              ? `Ganador P${match.sourceMatchA}`
+              : "Por definir"
+          )}
+        />
+
+        <div style={multiScoreStyle}>
+          <span>{match.scoreA}</span>
+          <small>VS</small>
+          <span>{match.scoreB}</span>
+        </div>
+
+        <MiniTeamSide
+          team={teamB}
+          name={getTeamName(
+            teamB,
+            match.sourceMatchB
+              ? `Ganador P${match.sourceMatchB}`
+              : "Por definir"
+          )}
+        />
       </div>
 
-      {hasPenalties && (
-        <div style={penaltyScoreStyle}>
-          Penales: {penalty ?? 0}
-        </div>
-      )}
+      <div style={multiStatusStyle}>
+        {getStatusText(match, isRunning)}
+      </div>
     </article>
   );
 }
 
-function TeamLogo({
+function MiniTeamSide({
+  team,
+  name,
+}: {
+  team: Team | null;
+  name: string;
+}) {
+  return (
+    <div style={miniTeamSideStyle}>
+      <SmallTeamLogo team={team} />
+
+      <div style={miniTeamNameStyle}>
+        {name}
+      </div>
+    </div>
+  );
+}
+
+function OverlayHeader({
+  tournamentName,
+}: {
+  tournamentName: string;
+}) {
+  return (
+    <header style={headerStyle}>
+      <div style={socialPanelStyle}>
+        <div style={socialTitleStyle}>
+          SÍGUENOS EN
+        </div>
+
+        <div style={socialIconsStyle}>
+          <span>f</span>
+          <span>◎</span>
+          <span>▶</span>
+          <span>♪</span>
+        </div>
+
+        <div style={socialHandleStyle}>
+          @TEAMCR7STUDIO
+        </div>
+      </div>
+
+      <div style={brandCenterStyle}>
+        <div style={brandTitleStyle}>
+          TEAM<span style={brandBlueStyle}>CR7</span>STUDIO
+        </div>
+
+        <div style={brandSubtitleStyle}>
+          ★ {tournamentName} ★
+        </div>
+      </div>
+
+      <div style={rightBrandPanelStyle}>
+        <img
+          src="/teamcr7studio-logo.png"
+          alt="TEAMCR7STUDIO"
+          style={rightBrandLogoStyle}
+          onError={(event) => {
+            event.currentTarget.style.display = "none";
+          }}
+        />
+
+        <div style={rightBrandTextStyle}>
+          TEAM<br />CR7<br />STUDIO
+        </div>
+      </div>
+    </header>
+  );
+}
+
+function TeamCircleLogo({
+  team,
+}: {
+  team: Team | null;
+}) {
+  return (
+    <div style={teamCircleOuterStyle}>
+      <div style={teamCircleMiddleStyle}>
+        <div style={teamCircleInnerStyle}>
+          {team?.logoDataUrl ? (
+            <img
+              src={team.logoDataUrl}
+              alt={team.name}
+              style={teamCircleImageStyle}
+            />
+          ) : (
+            <div style={teamCirclePlaceholderStyle}>
+              <div style={placeholderStarStyle}>★</div>
+              <div style={placeholderTextStyle}>
+                TU<br />LOGO<br />AQUÍ
+              </div>
+              <div style={placeholderStarsStyle}>★★★</div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SmallTeamLogo({
   team,
 }: {
   team: Team | null;
 }) {
   if (!team?.logoDataUrl) {
     return (
-      <div style={teamLogoEmptyStyle}>
+      <div style={smallLogoEmptyStyle}>
         ⚽
       </div>
     );
@@ -720,8 +1090,215 @@ function TeamLogo({
     <img
       src={team.logoDataUrl}
       alt={team.name}
-      style={teamLogoStyle}
+      style={smallLogoStyle}
     />
+  );
+}
+
+function TeamNamePlate({
+  team,
+  name,
+  side,
+}: {
+  team: Team | null;
+  name: string;
+  side: "left" | "right";
+}) {
+  return (
+    <div
+      style={{
+        ...teamPlateStyle,
+        clipPath:
+          side === "left"
+            ? "polygon(0 0, 94% 0, 100% 50%, 94% 100%, 0 100%)"
+            : "polygon(6% 0, 100% 0, 100% 100%, 6% 100%, 0 50%)",
+        textAlign:
+          side === "left" ? "left" : "right",
+        paddingLeft:
+          side === "left" ? 64 : 24,
+        paddingRight:
+          side === "right" ? 64 : 24,
+      }}
+    >
+      <div style={teamNameProStyle}>
+        {name}
+      </div>
+
+      <div style={teamMetaStyle}>
+        {team?.category === "WOMEN"
+          ? "FÚTBOL FEMENINO"
+          : "FÚTBOL MASCULINO"}
+      </div>
+    </div>
+  );
+}
+
+function CenterScoreBox({
+  scoreA,
+  scoreB,
+  secondsLeft,
+  isRunning,
+  courtLabel,
+  hasPenalties,
+  penaltyA,
+  penaltyB,
+}: {
+  scoreA: number;
+  scoreB: number;
+  secondsLeft: number;
+  isRunning: boolean;
+  courtLabel: string;
+  hasPenalties: boolean;
+  penaltyA?: number;
+  penaltyB?: number;
+}) {
+  return (
+    <div style={centerScoreWrapperStyle}>
+      <div style={scoreNumbersRowStyle}>
+        <div style={scoreNumberStyle}>
+          {scoreA}
+        </div>
+
+        <div style={vsProStyle}>
+          VS
+        </div>
+
+        <div style={scoreNumberStyle}>
+          {scoreB}
+        </div>
+      </div>
+
+      <div style={timerPlateStyle}>
+        {formatTime(secondsLeft)}
+      </div>
+
+      <div style={liveBadgeStyle}>
+        <span style={liveDotStyle}></span>
+        {isRunning ? "EN VIVO" : "PAUSADO"}
+      </div>
+
+      {hasPenalties && (
+        <div style={penaltyMiniStyle}>
+          Penales {penaltyA ?? 0} - {penaltyB ?? 0}
+        </div>
+      )}
+
+      <div style={courtBadgeStyle}>
+        {courtLabel}
+      </div>
+    </div>
+  );
+}
+
+function LowerInfoBar({
+  match,
+  tournamentName,
+  isRunning,
+}: {
+  match: Match;
+  tournamentName: string;
+  isRunning: boolean;
+}) {
+  return (
+    <section style={lowerInfoBarStyle}>
+      <InfoItem
+        icon="⚽"
+        title={getStatusText(match, isRunning)}
+        subtitle={
+          isRunning
+            ? "DISFRUTA CADA MOMENTO"
+            : "LISTO PARA INICIAR"
+        }
+      />
+
+      <InfoItem
+        icon="⏱"
+        title="TORNEO"
+        subtitle={tournamentName}
+      />
+
+      <InfoItem
+        icon="🏆"
+        title="FASE"
+        subtitle={getStageText(match)}
+      />
+
+      <InfoItem
+        icon="📍"
+        title="UBICACIÓN"
+        subtitle={getCourtLabel(match)}
+      />
+
+      <InfoItem
+        icon="#"
+        title="#TEAMCR7STUDIO"
+        subtitle="PASIÓN POR EL FÚTBOL"
+      />
+    </section>
+  );
+}
+
+function InfoItem({
+  icon,
+  title,
+  subtitle,
+}: {
+  icon: string;
+  title: string;
+  subtitle: string;
+}) {
+  return (
+    <div style={infoItemStyle}>
+      <div style={infoIconStyle}>
+        {icon}
+      </div>
+
+      <div>
+        <div style={infoTitleStyle}>
+          {title}
+        </div>
+
+        <div style={infoSubtitleStyle}>
+          {subtitle}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SponsorStrip() {
+  return (
+    <section style={sponsorWrapperStyle}>
+      <div style={sponsorTitleStyle}>
+        PATROCINADORES OFICIALES
+      </div>
+
+      <div style={sponsorStripStyle}>
+        <SponsorPlaceholder icon="▲" />
+        <SponsorPlaceholder icon="●" />
+        <SponsorPlaceholder icon="⬢" />
+        <SponsorPlaceholder icon="▱" />
+        <SponsorPlaceholder icon="⌁" />
+      </div>
+    </section>
+  );
+}
+
+function SponsorPlaceholder({
+  icon,
+}: {
+  icon: string;
+}) {
+  return (
+    <div style={sponsorItemStyle}>
+      <div style={sponsorIconStyle}>
+        {icon}
+      </div>
+
+      <div style={sponsorTextStyle}>
+        TU LOGO<br />AQUÍ
+      </div>
+    </div>
   );
 }
 
@@ -729,6 +1306,10 @@ function ControlPanel({
   fixture,
   selectedMatch,
   selectedMatchId,
+  overlayMode,
+  setOverlayMode,
+  simultaneousCount,
+  simultaneousTime,
   secondsLeft,
   durationSeconds,
   isRunning,
@@ -752,6 +1333,10 @@ function ControlPanel({
   fixture: Match[];
   selectedMatch: Match | null;
   selectedMatchId: number | null;
+  overlayMode: OverlayMode;
+  setOverlayMode: (mode: OverlayMode) => void;
+  simultaneousCount: number;
+  simultaneousTime: string;
   secondsLeft: number;
   durationSeconds: number;
   isRunning: boolean;
@@ -787,6 +1372,10 @@ function ControlPanel({
   const matchOptions = [...fixture].sort((a, b) => {
     if (a.round !== b.round) {
       return a.round - b.round;
+    }
+
+    if (a.time !== b.time) {
+      return a.time.localeCompare(b.time);
     }
 
     return a.id - b.id;
@@ -825,14 +1414,54 @@ function ControlPanel({
       <div style={controlGridStyle}>
         <div style={controlBlockStyle}>
           <h3 style={controlBlockTitleStyle}>
-            📺 Partido en OBS
+            🎛 Tipo de Overlay
+          </h3>
+
+          <div style={modeButtonsStyle}>
+            <button
+              onClick={() => setOverlayMode("SINGLE")}
+              style={
+                overlayMode === "SINGLE"
+                  ? activeModeButtonStyle
+                  : grayButtonStyle
+              }
+            >
+              Marcador Principal
+            </button>
+
+            <button
+              onClick={() => setOverlayMode("MULTI")}
+              style={
+                overlayMode === "MULTI"
+                  ? activeModeButtonStyle
+                  : grayButtonStyle
+              }
+            >
+              Multicancha
+            </button>
+          </div>
+
+          <div style={modeInfoStyle}>
+            {overlayMode === "MULTI"
+              ? `Mostrando ${simultaneousCount} partido(s) de las ${simultaneousTime}`
+              : "Mostrando solo el partido seleccionado"}
+          </div>
+        </div>
+
+        <div style={controlBlockStyle}>
+          <h3 style={controlBlockTitleStyle}>
+            📺 Partido base
           </h3>
 
           <select
             value={selectedMatchId ?? selectedMatch?.id ?? ""}
-            onChange={(event) =>
-              selectMatch(Number(event.target.value))
-            }
+            onChange={(event) => {
+              const value = event.target.value;
+
+              if (!value) return;
+
+              selectMatch(Number(value));
+            }}
             style={selectStyle}
           >
             <option value="">
@@ -937,7 +1566,7 @@ function ControlPanel({
 
         <div style={controlBlockStyle}>
           <h3 style={controlBlockTitleStyle}>
-            ⚽ Marcador
+            ⚽ Marcador del partido base
           </h3>
 
           {!selectedMatch ? (
@@ -1399,167 +2028,655 @@ function TeamGoalEditor({
   );
 }
 
+/* ===================== ESTILOS OVERLAY ===================== */
+
 const pageStyle: CSSProperties = {
   width: "100%",
   minHeight: "100vh",
   background:
-    "radial-gradient(circle at top, rgba(37, 99, 235, 0.35), transparent 35%), linear-gradient(135deg, #020617, #0f172a 55%, #111827)",
+    "radial-gradient(circle at 50% 10%, rgba(14,165,233,.36), transparent 30%), radial-gradient(circle at 50% 86%, rgba(22,163,74,.22), transparent 26%), linear-gradient(180deg, #020617 0%, #07111f 55%, #06180f 100%)",
   color: "white",
   display: "flex",
   flexDirection: "column",
   alignItems: "center",
-  padding: 40,
+  padding: 22,
+  position: "relative",
 };
 
-const topBarStyle: CSSProperties = {
+const singleOverlayShellStyle: CSSProperties = {
   width: "100%",
-  maxWidth: 1180,
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "center",
-  background: "rgba(15, 23, 42, 0.94)",
-  border: "1px solid #334155",
-  borderRadius: 18,
-  padding: "16px 24px",
-  marginBottom: 28,
-  boxShadow: "0 18px 45px rgba(0,0,0,.28)",
+  maxWidth: 1500,
+  minHeight: 820,
+  position: "relative",
+  borderRadius: 10,
+  overflow: "hidden",
+  background:
+    "linear-gradient(180deg, rgba(2,6,23,.12), rgba(2,6,23,.20))",
 };
 
-const brandBoxStyle: CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  gap: 14,
-};
-
-const brandLogoStyle: CSSProperties = {
-  width: 58,
-  height: 58,
-  objectFit: "contain",
-  flexShrink: 0,
-};
-
-const brandTextStyle: CSSProperties = {
-  fontSize: 24,
-  fontWeight: 900,
-  textTransform: "uppercase",
-};
-
-const topInfoStyle: CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  gap: 22,
-  color: "#e0f2fe",
-  fontSize: 24,
-  fontWeight: 900,
-};
-
-const scoreboardStyle: CSSProperties = {
+const multiOverlayShellStyle: CSSProperties = {
   width: "100%",
-  maxWidth: 1180,
+  maxWidth: 1500,
+  minHeight: 820,
+  position: "relative",
+  borderRadius: 10,
+  overflow: "hidden",
+};
+
+const headerStyle: CSSProperties = {
+  minHeight: 118,
   display: "grid",
-  gridTemplateColumns: "1fr 120px 1fr",
-  gap: 22,
+  gridTemplateColumns: "290px 1fr 290px",
+  gap: 18,
   alignItems: "center",
-};
-
-const teamPanelStyle: CSSProperties = {
-  minHeight: 300,
+  padding: "12px 26px",
   background:
-    "linear-gradient(180deg, rgba(30,41,59,.97), rgba(15,23,42,.97))",
-  border: "1px solid #475569",
-  borderRadius: 24,
-  padding: 28,
-  display: "flex",
-  flexDirection: "column",
-  justifyContent: "space-between",
-  boxShadow: "0 22px 60px rgba(0,0,0,.38)",
+    "linear-gradient(180deg, rgba(2,6,23,.98), rgba(15,23,42,.94))",
+  borderBottom: "2px solid rgba(14,165,233,.8)",
+  boxShadow: "0 18px 55px rgba(0,0,0,.45)",
 };
 
-const teamLogoStyle: CSSProperties = {
-  width: 120,
-  height: 120,
-  objectFit: "contain",
-  background: "#020617",
-  border: "2px solid #334155",
-  borderRadius: 22,
-  padding: 8,
-  flexShrink: 0,
-  boxShadow: "0 12px 30px rgba(0,0,0,.35)",
-};
-
-const teamLogoEmptyStyle: CSSProperties = {
-  width: 120,
-  height: 120,
-  background: "#020617",
-  border: "2px solid #334155",
-  borderRadius: 22,
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  flexShrink: 0,
-  fontSize: 48,
-  boxShadow: "0 12px 30px rgba(0,0,0,.35)",
-};
-
-const scoreStyle: CSSProperties = {
-  fontSize: 100,
-  fontWeight: 900,
-  color: "#60a5fa",
-  lineHeight: 1,
-  textAlign: "center",
-  textShadow: "0 8px 30px rgba(96,165,250,.35)",
-};
-
-const penaltyScoreStyle: CSSProperties = {
-  marginTop: 8,
-  fontSize: 24,
-  fontWeight: 900,
-  color: "#facc15",
-  textAlign: "center",
-};
-
-const vsStyle: CSSProperties = {
-  width: 120,
-  height: 120,
-  borderRadius: "50%",
+const socialPanelStyle: CSSProperties = {
+  height: "100%",
   background:
-    "linear-gradient(135deg, #facc15, #f97316)",
-  color: "#111827",
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  fontSize: 38,
-  fontWeight: 900,
-  boxShadow: "0 18px 45px rgba(250,204,21,.28)",
+    "linear-gradient(135deg, rgba(15,23,42,.98), rgba(2,6,23,.9))",
+  border: "1px solid rgba(14,165,233,.55)",
+  borderRadius: 14,
+  padding: "14px 22px",
 };
 
-const penaltyBannerStyle: CSSProperties = {
-  marginTop: 26,
-  width: "100%",
-  maxWidth: 1180,
-  background: "#713f12",
-  border: "1px solid #facc15",
-  color: "#fef3c7",
-  borderRadius: 18,
-  padding: 18,
-  textAlign: "center",
-  fontSize: 26,
-  fontWeight: 900,
-};
-
-const bottomBarStyle: CSSProperties = {
-  marginTop: 26,
-  width: "100%",
-  maxWidth: 1180,
-  background: "rgba(2, 6, 23, 0.92)",
-  border: "1px solid #334155",
-  borderRadius: 18,
-  padding: 18,
-  textAlign: "center",
-  fontSize: 28,
+const socialTitleStyle: CSSProperties = {
+  fontSize: 15,
+  fontStyle: "italic",
   fontWeight: 900,
   letterSpacing: 1,
 };
+
+const socialIconsStyle: CSSProperties = {
+  display: "flex",
+  gap: 16,
+  color: "#facc15",
+  fontSize: 24,
+  fontWeight: 900,
+  marginTop: 7,
+};
+
+const socialHandleStyle: CSSProperties = {
+  color: "#22d3ee",
+  fontWeight: 900,
+  marginTop: 5,
+  fontSize: 15,
+};
+
+const brandCenterStyle: CSSProperties = {
+  height: "100%",
+  background:
+    "linear-gradient(180deg, rgba(15,23,42,.98), rgba(2,6,23,.94))",
+  border: "1px solid rgba(14,165,233,.7)",
+  borderRadius: 18,
+  display: "flex",
+  flexDirection: "column",
+  justifyContent: "center",
+  alignItems: "center",
+  boxShadow:
+    "inset 0 0 28px rgba(14,165,233,.2), 0 0 28px rgba(14,165,233,.18)",
+};
+
+const brandTitleStyle: CSSProperties = {
+  fontSize: 52,
+  lineHeight: 1,
+  fontWeight: 1000,
+  letterSpacing: 3,
+  textTransform: "uppercase",
+  color: "#f8fafc",
+  textShadow:
+    "0 3px 0 #64748b, 0 0 22px rgba(14,165,233,.28)",
+};
+
+const brandBlueStyle: CSSProperties = {
+  color: "#0ea5e9",
+  textShadow:
+    "0 0 22px rgba(14,165,233,.95)",
+};
+
+const brandSubtitleStyle: CSSProperties = {
+  color: "#facc15",
+  fontWeight: 900,
+  letterSpacing: 4,
+  marginTop: 10,
+  fontSize: 13,
+  textTransform: "uppercase",
+  maxWidth: "90%",
+  whiteSpace: "nowrap",
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+};
+
+const rightBrandPanelStyle: CSSProperties = {
+  height: "100%",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  gap: 14,
+  background:
+    "linear-gradient(225deg, rgba(15,23,42,.98), rgba(2,6,23,.9))",
+  border: "1px solid rgba(14,165,233,.55)",
+  borderRadius: 14,
+  padding: "12px 20px",
+};
+
+const rightBrandLogoStyle: CSSProperties = {
+  width: 68,
+  height: 68,
+  objectFit: "contain",
+};
+
+const rightBrandTextStyle: CSSProperties = {
+  fontSize: 21,
+  lineHeight: 0.95,
+  fontWeight: 1000,
+  letterSpacing: 3,
+};
+
+const singleScoreboardStyle: CSSProperties = {
+  marginTop: 120,
+  display: "grid",
+  gridTemplateColumns: "170px 1fr 315px 1fr 170px",
+  gap: 0,
+  alignItems: "center",
+  padding: "0 38px",
+};
+
+const teamCircleOuterStyle: CSSProperties = {
+  width: 172,
+  height: 172,
+  borderRadius: "50%",
+  background:
+    "conic-gradient(from 120deg, #0ea5e9, #facc15, #38bdf8, #0ea5e9)",
+  padding: 6,
+  zIndex: 4,
+  boxShadow:
+    "0 0 28px rgba(14,165,233,.75), 0 0 45px rgba(250,204,21,.26)",
+};
+
+const teamCircleMiddleStyle: CSSProperties = {
+  width: "100%",
+  height: "100%",
+  borderRadius: "50%",
+  background:
+    "linear-gradient(180deg, #020617, #0f172a)",
+  padding: 9,
+  border: "3px solid rgba(255,255,255,.18)",
+};
+
+const teamCircleInnerStyle: CSSProperties = {
+  width: "100%",
+  height: "100%",
+  borderRadius: "50%",
+  background:
+    "radial-gradient(circle, #111827, #020617)",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  overflow: "hidden",
+  border: "2px solid rgba(14,165,233,.8)",
+};
+
+const teamCircleImageStyle: CSSProperties = {
+  width: "82%",
+  height: "82%",
+  objectFit: "contain",
+};
+
+const teamCirclePlaceholderStyle: CSSProperties = {
+  textAlign: "center",
+  fontWeight: 1000,
+};
+
+const placeholderStarStyle: CSSProperties = {
+  color: "#facc15",
+  fontSize: 24,
+  marginBottom: 4,
+};
+
+const placeholderTextStyle: CSSProperties = {
+  fontSize: 20,
+  lineHeight: 1.05,
+};
+
+const placeholderStarsStyle: CSSProperties = {
+  color: "#facc15",
+  fontSize: 19,
+  marginTop: 8,
+  letterSpacing: 3,
+};
+
+const teamPlateStyle: CSSProperties = {
+  height: 140,
+  background:
+    "linear-gradient(180deg, rgba(15,46,102,.96), rgba(3,14,35,.96))",
+  borderTop: "2px solid #0ea5e9",
+  borderBottom: "2px solid #0ea5e9",
+  position: "relative",
+  overflow: "hidden",
+  display: "flex",
+  flexDirection: "column",
+  justifyContent: "center",
+  boxShadow:
+    "inset 0 0 36px rgba(14,165,233,.25), 0 0 24px rgba(14,165,233,.28)",
+};
+
+const teamNameProStyle: CSSProperties = {
+  fontSize: 38,
+  fontWeight: 1000,
+  fontStyle: "italic",
+  letterSpacing: 1,
+  textTransform: "uppercase",
+  textShadow:
+    "0 3px 0 rgba(15,23,42,.8), 0 0 14px rgba(255,255,255,.18)",
+  whiteSpace: "nowrap",
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+};
+
+const teamMetaStyle: CSSProperties = {
+  color: "#38bdf8",
+  fontWeight: 900,
+  fontSize: 12,
+  letterSpacing: 1.2,
+  marginTop: 8,
+};
+
+const centerScoreWrapperStyle: CSSProperties = {
+  height: 225,
+  background:
+    "linear-gradient(180deg, rgba(2,6,23,.98), rgba(15,23,42,.98))",
+  border: "2px solid rgba(250,204,21,.72)",
+  borderRadius: 18,
+  display: "flex",
+  flexDirection: "column",
+  justifyContent: "center",
+  alignItems: "center",
+  zIndex: 3,
+  boxShadow:
+    "0 0 30px rgba(14,165,233,.35), inset 0 0 22px rgba(14,165,233,.18)",
+};
+
+const scoreNumbersRowStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "1fr 68px 1fr",
+  alignItems: "center",
+  gap: 4,
+  width: "90%",
+};
+
+const scoreNumberStyle: CSSProperties = {
+  fontSize: 78,
+  fontWeight: 1000,
+  lineHeight: 0.92,
+  textAlign: "center",
+  color: "#f8fafc",
+  textShadow:
+    "0 4px 0 #475569, 0 0 20px rgba(255,255,255,.2)",
+};
+
+const vsProStyle: CSSProperties = {
+  fontSize: 28,
+  color: "#22d3ee",
+  fontWeight: 1000,
+  textAlign: "center",
+  fontStyle: "italic",
+  textShadow: "0 0 18px rgba(34,211,238,.95)",
+};
+
+const timerPlateStyle: CSSProperties = {
+  marginTop: 10,
+  fontSize: 40,
+  fontWeight: 1000,
+  letterSpacing: 2,
+  color: "#f8fafc",
+  lineHeight: 1,
+};
+
+const liveBadgeStyle: CSSProperties = {
+  marginTop: 10,
+  border: "1px solid #facc15",
+  borderRadius: 999,
+  padding: "6px 22px",
+  color: "#facc15",
+  fontWeight: 1000,
+  fontSize: 18,
+  display: "flex",
+  alignItems: "center",
+  gap: 10,
+  background: "rgba(2,6,23,.76)",
+};
+
+const liveDotStyle: CSSProperties = {
+  width: 12,
+  height: 12,
+  borderRadius: "50%",
+  background: "#ef4444",
+  boxShadow: "0 0 12px rgba(239,68,68,.95)",
+};
+
+const penaltyMiniStyle: CSSProperties = {
+  marginTop: 7,
+  color: "#fde68a",
+  fontWeight: 900,
+  fontSize: 14,
+};
+
+const courtBadgeStyle: CSSProperties = {
+  marginTop: 8,
+  background:
+    "linear-gradient(180deg, #0f3b82, #071832)",
+  border: "1px solid #0ea5e9",
+  color: "#f8fafc",
+  padding: "7px 28px",
+  borderRadius: 8,
+  fontWeight: 1000,
+  fontSize: 18,
+  textTransform: "uppercase",
+  boxShadow: "0 0 18px rgba(14,165,233,.45)",
+};
+
+const lowerInfoBarStyle: CSSProperties = {
+  margin: "72px auto 0",
+  width: "94%",
+  minHeight: 92,
+  display: "grid",
+  gridTemplateColumns: "1.35fr 1fr 1fr 1fr 1.25fr",
+  gap: 0,
+  alignItems: "center",
+  background:
+    "linear-gradient(180deg, rgba(15,23,42,.98), rgba(2,6,23,.98))",
+  border: "2px solid rgba(14,165,233,.75)",
+  borderRadius: 14,
+  boxShadow:
+    "0 0 30px rgba(14,165,233,.38), inset 0 0 28px rgba(14,165,233,.14)",
+  overflow: "hidden",
+};
+
+const infoItemStyle: CSSProperties = {
+  height: "100%",
+  display: "flex",
+  alignItems: "center",
+  gap: 14,
+  padding: "16px 18px",
+  borderRight: "1px solid rgba(148,163,184,.35)",
+};
+
+const infoIconStyle: CSSProperties = {
+  width: 45,
+  height: 45,
+  borderRadius: "50%",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  color: "#0ea5e9",
+  fontSize: 27,
+  fontWeight: 1000,
+};
+
+const infoTitleStyle: CSSProperties = {
+  color: "#f8fafc",
+  fontSize: 15,
+  fontWeight: 1000,
+  fontStyle: "italic",
+  textTransform: "uppercase",
+  lineHeight: 1.05,
+};
+
+const infoSubtitleStyle: CSSProperties = {
+  color: "#22d3ee",
+  fontSize: 12,
+  fontWeight: 900,
+  marginTop: 5,
+  textTransform: "uppercase",
+  maxWidth: 240,
+  whiteSpace: "nowrap",
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+};
+
+const sponsorWrapperStyle: CSSProperties = {
+  margin: "15px auto 0",
+  width: "86%",
+  textAlign: "center",
+};
+
+const sponsorTitleStyle: CSSProperties = {
+  display: "inline-block",
+  color: "#facc15",
+  fontSize: 15,
+  fontWeight: 1000,
+  letterSpacing: 4,
+  padding: "0 20px",
+  marginBottom: 8,
+};
+
+const sponsorStripStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(5, 1fr)",
+  background:
+    "linear-gradient(180deg, rgba(15,23,42,.98), rgba(2,6,23,.98))",
+  border: "1px solid rgba(14,165,233,.5)",
+  borderRadius: 12,
+  minHeight: 72,
+  overflow: "hidden",
+};
+
+const sponsorItemStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  gap: 12,
+  borderRight: "1px solid rgba(148,163,184,.35)",
+};
+
+const sponsorIconStyle: CSSProperties = {
+  color: "#f8fafc",
+  fontSize: 28,
+  fontWeight: 1000,
+};
+
+const sponsorTextStyle: CSSProperties = {
+  color: "#f8fafc",
+  fontSize: 12,
+  fontWeight: 900,
+  lineHeight: 1.05,
+};
+
+/* ===================== MULTICANCHA ===================== */
+
+const multiTitleBoxStyle: CSSProperties = {
+  margin: "42px auto 24px",
+  width: "92%",
+  display: "flex",
+  justifyContent: "space-between",
+  gap: 24,
+  alignItems: "center",
+  background:
+    "linear-gradient(135deg, rgba(15,23,42,.98), rgba(2,6,23,.92))",
+  border: "2px solid rgba(14,165,233,.75)",
+  borderRadius: 18,
+  padding: "24px 30px",
+  boxShadow: "0 0 30px rgba(14,165,233,.32)",
+};
+
+const multiSmallTitleStyle: CSSProperties = {
+  color: "#facc15",
+  fontSize: 15,
+  fontWeight: 1000,
+  letterSpacing: 2,
+};
+
+const multiMainTitleStyle: CSSProperties = {
+  margin: "6px 0",
+  fontSize: 44,
+  fontWeight: 1000,
+  lineHeight: 1,
+};
+
+const multiSubtitleStyle: CSSProperties = {
+  margin: 0,
+  color: "#cbd5e1",
+  fontSize: 18,
+};
+
+const multiTimerBoxStyle: CSSProperties = {
+  minWidth: 210,
+  textAlign: "center",
+  background: "#020617",
+  border: "1px solid #334155",
+  borderRadius: 16,
+  padding: 18,
+};
+
+const multiTimerStyle: CSSProperties = {
+  fontSize: 44,
+  fontWeight: 1000,
+  color: "#60a5fa",
+};
+
+const multiLiveBadgeStyle: CSSProperties = {
+  marginTop: 8,
+  border: "1px solid",
+  borderRadius: 999,
+  padding: "7px 16px",
+  fontWeight: 1000,
+};
+
+const multiGridStyle: CSSProperties = {
+  width: "92%",
+  margin: "0 auto",
+  display: "grid",
+  gridTemplateColumns:
+    "repeat(auto-fit, minmax(420px, 1fr))",
+  gap: 20,
+};
+
+const multiCardStyle: CSSProperties = {
+  background:
+    "linear-gradient(180deg, rgba(15,23,42,.98), rgba(2,6,23,.98))",
+  border: "2px solid #38bdf8",
+  borderRadius: 18,
+  padding: 18,
+  boxShadow:
+    "0 18px 45px rgba(0,0,0,.38), inset 0 0 22px rgba(14,165,233,.14)",
+};
+
+const multiCardTopStyle: CSSProperties = {
+  display: "flex",
+  justifyContent: "space-between",
+  gap: 12,
+  alignItems: "center",
+  marginBottom: 14,
+};
+
+const multiCategoryStyle: CSSProperties = {
+  fontWeight: 1000,
+  letterSpacing: 1.5,
+  fontSize: 13,
+};
+
+const multiCourtStyle: CSSProperties = {
+  fontSize: 24,
+  fontWeight: 1000,
+  marginTop: 4,
+};
+
+const multiCardTimeStyle: CSSProperties = {
+  background: "#0f172a",
+  border: "1px solid #334155",
+  borderRadius: 999,
+  padding: "8px 14px",
+  fontWeight: 1000,
+  color: "#facc15",
+};
+
+const multiTeamsGridStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "1fr 130px 1fr",
+  gap: 12,
+  alignItems: "center",
+};
+
+const miniTeamSideStyle: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  alignItems: "center",
+  gap: 8,
+  textAlign: "center",
+};
+
+const smallLogoStyle: CSSProperties = {
+  width: 66,
+  height: 66,
+  objectFit: "contain",
+  background: "#020617",
+  border: "1px solid #334155",
+  borderRadius: 14,
+  padding: 5,
+};
+
+const smallLogoEmptyStyle: CSSProperties = {
+  width: 66,
+  height: 66,
+  background: "#020617",
+  border: "1px solid #334155",
+  borderRadius: 14,
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  fontSize: 30,
+};
+
+const miniTeamNameStyle: CSSProperties = {
+  fontSize: 19,
+  fontWeight: 1000,
+  textTransform: "uppercase",
+  lineHeight: 1.05,
+};
+
+const multiScoreStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "1fr",
+  justifyItems: "center",
+  alignItems: "center",
+  background:
+    "linear-gradient(180deg, #020617, #0f172a)",
+  border: "1px solid #facc15",
+  borderRadius: 14,
+  padding: "10px 8px",
+};
+
+const multiStatusStyle: CSSProperties = {
+  marginTop: 14,
+  background: "#0f172a",
+  border: "1px solid #334155",
+  borderRadius: 10,
+  padding: 10,
+  textAlign: "center",
+  fontWeight: 1000,
+  color: "#e0f2fe",
+};
+
+const multiBottomBarStyle: CSSProperties = {
+  width: "92%",
+  margin: "24px auto 0",
+  display: "grid",
+  gridTemplateColumns:
+    "repeat(auto-fit, minmax(260px, 1fr))",
+  background:
+    "linear-gradient(180deg, rgba(15,23,42,.98), rgba(2,6,23,.98))",
+  border: "2px solid rgba(14,165,233,.75)",
+  borderRadius: 14,
+  overflow: "hidden",
+};
+
+/* ===================== PANEL CONTROL ===================== */
 
 const controlPanelStyle: CSSProperties = {
   width: "100%",
@@ -1570,7 +2687,6 @@ const controlPanelStyle: CSSProperties = {
   borderRadius: 20,
   padding: 20,
   boxShadow: "0 20px 55px rgba(0,0,0,.35)",
-  position: "relative",
 };
 
 const controlHeaderStyle: CSSProperties = {
@@ -1626,6 +2742,32 @@ const statusPillStyle: CSSProperties = {
   padding: "8px 16px",
   fontSize: 13,
   fontWeight: 900,
+};
+
+const modeButtonsStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "1fr 1fr",
+  gap: 10,
+};
+
+const activeModeButtonStyle: CSSProperties = {
+  padding: "12px",
+  background: "#0ea5e9",
+  color: "white",
+  border: "none",
+  borderRadius: 10,
+  cursor: "pointer",
+  fontWeight: 900,
+};
+
+const modeInfoStyle: CSSProperties = {
+  marginTop: 12,
+  background: "#0f172a",
+  border: "1px solid #334155",
+  borderRadius: 10,
+  padding: 10,
+  color: "#cbd5e1",
+  fontSize: 13,
 };
 
 const selectStyle: CSSProperties = {
@@ -1810,6 +2952,15 @@ const emptyHelpStyle: CSSProperties = {
   color: "#93c5fd",
   fontSize: 17,
 };
+
+const brandLogoStyle: CSSProperties = {
+  width: 58,
+  height: 58,
+  objectFit: "contain",
+  flexShrink: 0,
+};
+
+/* ===================== MODAL GOLEADORES ===================== */
 
 const modalOverlayStyle: CSSProperties = {
   position: "fixed",
