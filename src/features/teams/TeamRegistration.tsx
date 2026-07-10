@@ -2,7 +2,9 @@ import {
   useEffect,
   useRef,
   useState,
+  type ChangeEvent,
   type CSSProperties,
+  type MutableRefObject,
 } from "react";
 
 import { useTournament } from "../../store/tournamentStore";
@@ -44,6 +46,25 @@ function createEmptyGroups(
   );
 }
 
+function getWomenFieldLetter(index: number) {
+  const letters = ["A", "B", "C", "D"];
+
+  return letters[index - 1] ?? String(index);
+}
+
+function getFieldLabel(
+  category: TeamCategory,
+  courtIndex: number
+) {
+  const courtNumber = courtIndex + 1;
+
+  if (category === "WOMEN") {
+    return `Campo ${getWomenFieldLetter(courtNumber)}`;
+  }
+
+  return `Campo ${courtNumber}`;
+}
+
 export default function TeamRegistration() {
   const { tournament } = useTournament();
 
@@ -55,7 +76,7 @@ export default function TeamRegistration() {
 
   const totalTeams = tournament?.teams ?? 16;
 
-  const menCourts = tournament?.courts ?? 1;
+  const menCourts = tournament?.courts ?? 0;
 
   const womenCourts =
     tournament?.womenCourts ?? 0;
@@ -146,19 +167,19 @@ export default function TeamRegistration() {
   }
 
   async function importExcel(
-    event: React.ChangeEvent<HTMLInputElement>
+    event: ChangeEvent<HTMLInputElement>
   ) {
     const file = event.target.files?.[0];
 
     if (!file) return;
 
     try {
-      const teams =
+      const importedTeams =
         await importTeamsFromExcel(file);
 
       const copy = Array(totalTeams).fill("");
 
-      teams
+      importedTeams
         .slice(0, totalTeams)
         .forEach((name, index) => {
           copy[index] = name;
@@ -166,7 +187,7 @@ export default function TeamRegistration() {
 
       setTeamNames(copy);
 
-      alert(`${teams.length} equipos importados.`);
+      alert(`${importedTeams.length} equipos importados.`);
     } catch {
       alert("No se pudo leer el archivo Excel.");
     } finally {
@@ -175,7 +196,7 @@ export default function TeamRegistration() {
   }
 
   async function importExcelForCourt(
-    event: React.ChangeEvent<HTMLInputElement>,
+    event: ChangeEvent<HTMLInputElement>,
     category: TeamCategory,
     courtIndex: number
   ) {
@@ -184,7 +205,7 @@ export default function TeamRegistration() {
     if (!file) return;
 
     try {
-      const teams =
+      const importedTeams =
         await importTeamsFromExcel(file);
 
       const setter =
@@ -200,7 +221,7 @@ export default function TeamRegistration() {
         const limit =
           copy[courtIndex]?.length ?? 0;
 
-        teams
+        importedTeams
           .slice(0, limit)
           .forEach((name, index) => {
             copy[courtIndex][index] = name;
@@ -210,11 +231,10 @@ export default function TeamRegistration() {
       });
 
       alert(
-        `${teams.length} equipos importados en ${
-          category === "MEN"
-            ? `Cancha ${courtIndex + 1}`
-            : `C. Mujer ${courtIndex + 1}`
-        }.`
+        `${importedTeams.length} equipos importados en ${getFieldLabel(
+          category,
+          courtIndex
+        )}.`
       );
     } catch {
       alert("No se pudo leer el archivo Excel.");
@@ -243,7 +263,7 @@ export default function TeamRegistration() {
 
   function validateCourtGroups(
     groups: string[][],
-    label: string
+    category: TeamCategory
   ) {
     for (
       let index = 0;
@@ -256,7 +276,10 @@ export default function TeamRegistration() {
 
       if (count < 2) {
         alert(
-          `${label} ${index + 1} debe tener al menos 2 equipos.`
+          `${getFieldLabel(
+            category,
+            index
+          )} debe tener al menos 2 equipos.`
         );
 
         return false;
@@ -275,7 +298,7 @@ export default function TeamRegistration() {
       const menValid =
         validateCourtGroups(
           menTeamsByCourt,
-          "Cancha"
+          "MEN"
         );
 
       if (!menValid) return;
@@ -284,7 +307,7 @@ export default function TeamRegistration() {
         const womenValid =
           validateCourtGroups(
             womenTeamsByCourt,
-            "C. Mujer"
+            "WOMEN"
           );
 
         if (!womenValid) return;
@@ -367,27 +390,30 @@ export default function TeamRegistration() {
               marginBottom: 25,
             }}
           >
-            Modo relámpago por canchas activo. Varones y mujeres
+            Modo relámpago por campos activo. Varones y mujeres
             tendrán llaves separadas dentro del mismo campeonato.
           </p>
 
-          <h3
-            style={{
-              color: "#93c5fd",
-            }}
-          >
-            VARONES
-          </h3>
+          {menCourts > 0 && (
+            <>
+              <h3
+                style={{
+                  color: "#93c5fd",
+                }}
+              >
+                VARONES
+              </h3>
 
-          <CourtGrid
-            category="MEN"
-            titlePrefix="Cancha"
-            slots={menSlots}
-            teamsByCourt={menTeamsByCourt}
-            fileRefs={menFileRefs}
-            onImport={importExcelForCourt}
-            onUpdate={updateCourtTeam}
-          />
+              <CourtGrid
+                category="MEN"
+                slots={menSlots}
+                teamsByCourt={menTeamsByCourt}
+                fileRefs={menFileRefs}
+                onImport={importExcelForCourt}
+                onUpdate={updateCourtTeam}
+              />
+            </>
+          )}
 
           {womenCourts > 0 && (
             <>
@@ -402,7 +428,6 @@ export default function TeamRegistration() {
 
               <CourtGrid
                 category="WOMEN"
-                titlePrefix="C. Mujer"
                 slots={womenSlots}
                 teamsByCourt={womenTeamsByCourt}
                 fileRefs={womenFileRefs}
@@ -505,7 +530,6 @@ export default function TeamRegistration() {
 
 function CourtGrid({
   category,
-  titlePrefix,
   slots,
   teamsByCourt,
   fileRefs,
@@ -513,14 +537,13 @@ function CourtGrid({
   onUpdate,
 }: {
   category: TeamCategory;
-  titlePrefix: string;
   slots: number[];
   teamsByCourt: string[][];
-  fileRefs: React.MutableRefObject<
+  fileRefs: MutableRefObject<
     Record<number, HTMLInputElement | null>
   >;
   onImport: (
-    event: React.ChangeEvent<HTMLInputElement>,
+    event: ChangeEvent<HTMLInputElement>,
     category: TeamCategory,
     courtIndex: number
   ) => void;
@@ -543,117 +566,125 @@ function CourtGrid({
         marginTop: 20,
       }}
     >
-      {slots.map((slotCount, courtIndex) => (
-        <div
-          key={courtIndex}
-          style={{
-            background: "#1e293b",
-            border: "1px solid #334155",
-            borderRadius: 14,
-            padding: 20,
-          }}
-        >
-          <h3
-            style={{
-              marginTop: 0,
-              color:
-                category === "MEN"
-                  ? "#60a5fa"
-                  : "#f9a8d4",
-            }}
-          >
-            🏟 {titlePrefix} {courtIndex + 1}
-          </h3>
+      {slots.map((slotCount, courtIndex) => {
+        const fieldLabel =
+          getFieldLabel(
+            category,
+            courtIndex
+          );
 
-          <p
-            style={{
-              color: "#94a3b8",
-            }}
-          >
-            Plazas para esta cancha:{" "}
-            <strong>{slotCount}</strong>
-          </p>
-
-          <input
-            ref={(element) => {
-              fileRefs.current[courtIndex] =
-                element;
-            }}
-            type="file"
-            accept=".xlsx,.xls"
-            style={{
-              display: "none",
-            }}
-            onChange={(event) =>
-              onImport(
-                event,
-                category,
-                courtIndex
-              )
-            }
-          />
-
-          <button
-            onClick={() =>
-              fileRefs.current[courtIndex]?.click()
-            }
-            style={importButton}
-          >
-            📥 IMPORTAR EXCEL {titlePrefix} {courtIndex + 1}
-          </button>
-
+        return (
           <div
+            key={courtIndex}
             style={{
-              display: "grid",
-              gridTemplateColumns:
-                slotCount > 8
-                  ? "1fr 1fr"
-                  : "1fr",
-              gap: 12,
-              marginTop: 20,
+              background: "#1e293b",
+              border: "1px solid #334155",
+              borderRadius: 14,
+              padding: 20,
             }}
           >
-            {Array.from({
-              length: slotCount,
-            }).map((_, teamIndex) => (
-              <div
-                key={teamIndex}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 10,
-                }}
-              >
-                <strong
+            <h3
+              style={{
+                marginTop: 0,
+                color:
+                  category === "MEN"
+                    ? "#60a5fa"
+                    : "#f9a8d4",
+              }}
+            >
+              🏟 {fieldLabel}
+            </h3>
+
+            <p
+              style={{
+                color: "#94a3b8",
+              }}
+            >
+              Plazas para este campo:{" "}
+              <strong>{slotCount}</strong>
+            </p>
+
+            <input
+              ref={(element) => {
+                fileRefs.current[courtIndex] =
+                  element;
+              }}
+              type="file"
+              accept=".xlsx,.xls"
+              style={{
+                display: "none",
+              }}
+              onChange={(event) =>
+                onImport(
+                  event,
+                  category,
+                  courtIndex
+                )
+              }
+            />
+
+            <button
+              onClick={() =>
+                fileRefs.current[courtIndex]?.click()
+              }
+              style={importButton}
+            >
+              📥 IMPORTAR EXCEL {fieldLabel}
+            </button>
+
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns:
+                  slotCount > 8
+                    ? "1fr 1fr"
+                    : "1fr",
+                gap: 12,
+                marginTop: 20,
+              }}
+            >
+              {Array.from({
+                length: slotCount,
+              }).map((_, teamIndex) => (
+                <div
+                  key={teamIndex}
                   style={{
-                    width: 30,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 10,
                   }}
                 >
-                  {teamIndex + 1}
-                </strong>
+                  <strong
+                    style={{
+                      width: 30,
+                    }}
+                  >
+                    {teamIndex + 1}
+                  </strong>
 
-                <input
-                  value={
-                    teamsByCourt[courtIndex]?.[
-                      teamIndex
-                    ] ?? ""
-                  }
-                  onChange={(event) =>
-                    onUpdate(
-                      category,
-                      courtIndex,
-                      teamIndex,
-                      event.target.value
-                    )
-                  }
-                  placeholder={`Equipo ${teamIndex + 1}`}
-                  style={inputStyle}
-                />
-              </div>
-            ))}
+                  <input
+                    value={
+                      teamsByCourt[courtIndex]?.[
+                        teamIndex
+                      ] ?? ""
+                    }
+                    onChange={(event) =>
+                      onUpdate(
+                        category,
+                        courtIndex,
+                        teamIndex,
+                        event.target.value
+                      )
+                    }
+                    placeholder={`Equipo ${teamIndex + 1}`}
+                    style={inputStyle}
+                  />
+                </div>
+              ))}
+            </div>
           </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }

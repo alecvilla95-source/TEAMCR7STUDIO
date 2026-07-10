@@ -95,6 +95,18 @@ export default function TournamentForm() {
       return;
     }
 
+    if (totalCourts <= 0) {
+      alert(
+        "Debes seleccionar al menos un campo: varones o mujeres."
+      );
+      return;
+    }
+
+    if (duration <= 0) {
+      alert("La duración del partido debe ser mayor a 0.");
+      return;
+    }
+
     const breaks: TournamentBreaks = {
       default: defaultBreak,
       group: groupBreak,
@@ -147,7 +159,7 @@ export default function TournamentForm() {
           marginBottom: 30,
         }}
       >
-        Define modalidad, canchas de varones, canchas de mujeres,
+        Define modalidad, campos de varones, campos de mujeres,
         duración y descansos.
       </p>
 
@@ -210,7 +222,7 @@ export default function TournamentForm() {
               marginTop: 0,
             }}
           >
-            🏟 Canchas del campeonato
+            🏟 Campos del campeonato
           </h3>
 
           <p
@@ -219,10 +231,11 @@ export default function TournamentForm() {
             }}
           >
             Puedes organizar varones y mujeres dentro del mismo campeonato,
-            pero con llaves separadas.
+            pero con llaves separadas. Puedes dejar una categoría sin campo
+            si ese campeonato solo tendrá la otra categoría.
           </p>
 
-          <label>Canchas Varones</label>
+          <label>Campos Varones</label>
 
           <select
             value={courts}
@@ -231,10 +244,11 @@ export default function TournamentForm() {
             }
             style={inputStyle}
           >
-            <option value={1}>1 Cancha Varones</option>
-            <option value={2}>2 Canchas Varones</option>
-            <option value={3}>3 Canchas Varones</option>
-            <option value={4}>4 Canchas Varones</option>
+            <option value={0}>Sin Campos Varones</option>
+            <option value={1}>Campo 1</option>
+            <option value={2}>Campo 1 y 2</option>
+            <option value={3}>Campo 1, 2 y 3</option>
+            <option value={4}>Campo 1, 2, 3 y 4</option>
           </select>
 
           <label
@@ -242,7 +256,7 @@ export default function TournamentForm() {
               marginTop: 12,
             }}
           >
-            Canchas Mujeres
+            Campos Mujeres
           </label>
 
           <select
@@ -252,12 +266,35 @@ export default function TournamentForm() {
             }
             style={inputStyle}
           >
-            <option value={0}>Sin Canchas Mujeres</option>
-            <option value={1}>C. Mujer 1</option>
-            <option value={2}>C. Mujer 1 y 2</option>
-            <option value={3}>C. Mujer 1, 2 y 3</option>
-            <option value={4}>C. Mujer 1, 2, 3 y 4</option>
+            <option value={0}>Sin Campos Mujeres</option>
+            <option value={1}>Campo A</option>
+            <option value={2}>Campo A y B</option>
+            <option value={3}>Campo A, B y C</option>
+            <option value={4}>Campo A, B, C y D</option>
           </select>
+
+          <div
+            style={{
+              marginTop: 12,
+              background:
+                totalCourts > 0
+                  ? "#052e16"
+                  : "#7f1d1d",
+              border:
+                totalCourts > 0
+                  ? "1px solid #16a34a"
+                  : "1px solid #ef4444",
+              color:
+                totalCourts > 0
+                  ? "#bbf7d0"
+                  : "#fecaca",
+              borderRadius: 10,
+              padding: 12,
+              fontWeight: 800,
+            }}
+          >
+            Total de campos activos: {totalCourts}
+          </div>
         </div>
 
         {mode === "ELIMINATION" && totalCourts > 1 && (
@@ -275,8 +312,8 @@ export default function TournamentForm() {
                 color: "#94a3b8",
               }}
             >
-              En relámpagos puedes separar los equipos por cancha.
-              Cada cancha tendrá su propia llave. Los varones sacarán su
+              En relámpagos puedes separar los equipos por campo.
+              Cada campo tendrá su propia llave. Los varones sacarán su
               campeón y las mujeres su campeona.
             </p>
 
@@ -294,7 +331,7 @@ export default function TournamentForm() {
               </option>
 
               <option value="SEPARATE_BRACKETS">
-                Llaves separadas por cancha
+                Llaves separadas por campo
               </option>
             </select>
           </div>

@@ -107,16 +107,22 @@ function getFootballCategoryLabel(team?: Partial<Team> | null) {
   return "FÚTBOL MASCULINO";
 }
 
+function getWomenFieldLetter(index: number) {
+  const letters = ["A", "B", "C", "D"];
+
+  return letters[index - 1] ?? String(index);
+}
+
 function getCourtLabel(team?: Partial<Team> | null) {
   if (!team?.assignedCourt) {
     return "";
   }
 
   if (team.category === "WOMEN") {
-    return `C. Mujer ${team.assignedCourt}`;
+    return `Campo ${getWomenFieldLetter(team.assignedCourt)}`;
   }
 
-  return `Cancha ${team.assignedCourt}`;
+  return `Campo ${team.assignedCourt}`;
 }
 
 function downloadWorkbook(
@@ -199,7 +205,7 @@ function createPlayerTemplateSheet({
       "",
     ],
     [
-      "CANCHA:",
+      "CAMPO:",
       team?.assignedCourt
         ? getCourtLabel(team)
         : "",
@@ -344,6 +350,21 @@ function getMetaValue(
   return cleanText(row?.[1]);
 }
 
+function getMetaValueAny(
+  rows: Array<Array<string | number>>,
+  labels: string[]
+) {
+  for (const label of labels) {
+    const value = getMetaValue(rows, label);
+
+    if (value) {
+      return value;
+    }
+  }
+
+  return "";
+}
+
 function getCategoryFromMeta(value: string): Team["category"] {
   const normalized = normalizeText(value);
 
@@ -368,6 +389,40 @@ function getCategoryFromMeta(value: string): Team["category"] {
 }
 
 function getCourtNumberFromMeta(value: string) {
+  const normalized = normalizeText(value);
+
+  if (
+    normalized === "CAMPO A" ||
+    normalized === "A" ||
+    normalized.includes("CAMPO A")
+  ) {
+    return 1;
+  }
+
+  if (
+    normalized === "CAMPO B" ||
+    normalized === "B" ||
+    normalized.includes("CAMPO B")
+  ) {
+    return 2;
+  }
+
+  if (
+    normalized === "CAMPO C" ||
+    normalized === "C" ||
+    normalized.includes("CAMPO C")
+  ) {
+    return 3;
+  }
+
+  if (
+    normalized === "CAMPO D" ||
+    normalized === "D" ||
+    normalized.includes("CAMPO D")
+  ) {
+    return 4;
+  }
+
   const match = value.match(/\d+/);
 
   if (!match) return undefined;
@@ -383,10 +438,16 @@ function findTeamForSheet(
     getMetaValue(rows, "Equipo");
 
   const categoryText =
-    getMetaValue(rows, "Categoria");
+    getMetaValueAny(rows, [
+      "Categoria",
+      "Categoría",
+    ]);
 
   const courtText =
-    getMetaValue(rows, "Cancha");
+    getMetaValueAny(rows, [
+      "Campo",
+      "Cancha",
+    ]);
 
   const category =
     getCategoryFromMeta(categoryText);
@@ -534,10 +595,16 @@ function buildTeamFromRegistrationSheet({
     getMetaValue(rows, "Delegado 2");
 
   const categoryText =
-    getMetaValue(rows, "Categoria");
+    getMetaValueAny(rows, [
+      "Categoria",
+      "Categoría",
+    ]);
 
   const courtText =
-    getMetaValue(rows, "Cancha");
+    getMetaValueAny(rows, [
+      "Campo",
+      "Cancha",
+    ]);
 
   const category =
     getCategoryFromMeta(categoryText) ?? "MEN";

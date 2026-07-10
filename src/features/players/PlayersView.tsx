@@ -33,12 +33,22 @@ function getCategoryLabel(team: Team) {
   return "FÚTBOL MASCULINO";
 }
 
+function getWomenFieldLetter(index: number) {
+  const letters = ["A", "B", "C", "D"];
+
+  return letters[index - 1] ?? String(index);
+}
+
 function getCourtLabel(team: Team) {
-  if (team.category === "WOMEN") {
-    return `C. Mujer ${team.assignedCourt ?? "-"}`;
+  if (!team.assignedCourt) {
+    return "Sin campo";
   }
 
-  return `Cancha ${team.assignedCourt ?? "-"}`;
+  if (team.category === "WOMEN") {
+    return `Campo ${getWomenFieldLetter(team.assignedCourt)}`;
+  }
+
+  return `Campo ${team.assignedCourt}`;
 }
 
 function escapeHtml(value: string) {
@@ -459,7 +469,7 @@ function buildTeamRosterHtml({
               </tr>
 
               <tr>
-                <td class="label-cell">CANCHA:</td>
+                <td class="label-cell">CAMPO:</td>
                 <td
                   class="court-value"
                   colspan="2"
@@ -983,7 +993,7 @@ export default function PlayersView() {
 
       if (totalSheets === 0) {
         alert(
-          "No se encontró ninguna ficha válida. Revisa que el Excel tenga Equipo, Delegado, Categoría, Cancha y jugadores."
+          "No se encontró ninguna ficha válida. Revisa que el Excel tenga Equipo, Delegado, Categoría, Campo y jugadores."
         );
 
         return;
@@ -1096,7 +1106,7 @@ export default function PlayersView() {
 
       if (imported.length === 0) {
         alert(
-          "No se encontró ninguna ficha válida. Asegúrate de no borrar las filas de Equipo, Delegados, Categoría y Cancha."
+          "No se encontró ninguna ficha válida. Asegúrate de no borrar las filas de Equipo, Delegados, Categoría y Campo."
         );
 
         return;
@@ -1813,11 +1823,9 @@ function groupTeamsByCourt(teams: Team[]) {
       const firstTeam = list[0];
 
       const label =
-        court === 0
-          ? "Sin cancha"
-          : firstTeam?.category === "WOMEN"
-          ? `C. Mujer ${court}`
-          : `Cancha ${court}`;
+        court === 0 || !firstTeam
+          ? "Sin campo"
+          : getCourtLabel(firstTeam);
 
       return {
         label,
