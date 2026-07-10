@@ -30,7 +30,8 @@ const OVERLAY_MODE_STORAGE_KEY =
 type OverlayMode =
   | "SINGLE"
   | "MULTI"
-  | "BRACKET";
+  | "BRACKET"
+  | "CHAMPION";
 
 function createId() {
   if (crypto.randomUUID) {
@@ -82,6 +83,8 @@ function readStoredOverlayMode(): OverlayMode {
   if (value === "MULTI") return "MULTI";
 
   if (value === "BRACKET") return "BRACKET";
+
+  if (value === "CHAMPION") return "CHAMPION";
 
   return "SINGLE";
 }
@@ -256,7 +259,7 @@ export default function OverlayView() {
 
   const { teams } = useTeams();
 
-  const { setChampion } =
+  const { champions, setChampion } =
     useChampion();
 
   const {
@@ -644,7 +647,14 @@ export default function OverlayView() {
           : "hidden",
       }}
     >
-      {overlayMode === "BRACKET" ? (
+      {overlayMode === "CHAMPION" ? (
+        <ChampionOverlay
+          tournamentName={tournament?.name ?? "TEAMCR7STUDIO"}
+          champions={champions}
+          fixture={fixture}
+          teamMap={teamMap}
+        />
+      ) : overlayMode === "BRACKET" ? (
         <BracketOverlay
           tournamentName={tournament?.name ?? "TEAMCR7STUDIO"}
           fixture={fixture}
@@ -1313,6 +1323,219 @@ function SponsorPlaceholder({
   );
 }
 
+
+
+interface ChampionDisplayItem {
+  key: string;
+  title: string;
+  team: Team | null;
+  color: string;
+}
+
+function getLastFinalWinner(fixture: Match[]) {
+  const finalMatch = [...fixture]
+    .reverse()
+    .find((match) => {
+      const label = `${match.courtLabel ?? ""} ${match.round ?? ""}`.toUpperCase();
+
+      return (
+        match.status === "FINISHED" &&
+        match.winner &&
+        (!match.nextMatchId || label.includes("FINAL"))
+      );
+    });
+
+  return finalMatch?.winner ?? null;
+}
+
+function getChampionDisplayItems({
+  champions,
+  fixture,
+  teamMap,
+}: {
+  champions: {
+    MEN?: Team | null;
+    WOMEN?: Team | null;
+    GENERAL?: Team | null;
+  };
+  fixture: Match[];
+  teamMap: Map<number, Team>;
+}): ChampionDisplayItem[] {
+  const fallbackWinner = getLastFinalWinner(fixture);
+
+  const items: ChampionDisplayItem[] = [];
+
+  if (champions.GENERAL) {
+    items.push({
+      key: "GENERAL",
+      title: "CAMPEÓN GENERAL",
+      team: getTeamWithLogo(champions.GENERAL, teamMap),
+      color: "#facc15",
+    });
+  }
+
+  if (champions.MEN) {
+    items.push({
+      key: "MEN",
+      title: "CAMPEÓN VARONES",
+      team: getTeamWithLogo(champions.MEN, teamMap),
+      color: "#38bdf8",
+    });
+  }
+
+  if (champions.WOMEN) {
+    items.push({
+      key: "WOMEN",
+      title: "CAMPEONA MUJERES",
+      team: getTeamWithLogo(champions.WOMEN, teamMap),
+      color: "#f9a8d4",
+    });
+  }
+
+  if (items.length === 0) {
+    items.push({
+      key: "PENDING",
+      title: fallbackWinner ? "ÚLTIMO GANADOR" : "CAMPEÓN PENDIENTE",
+      team: getTeamWithLogo(fallbackWinner, teamMap),
+      color: "#facc15",
+    });
+  }
+
+  return items;
+}
+
+function ChampionOverlay({
+  tournamentName,
+  champions,
+  fixture,
+  teamMap,
+}: {
+  tournamentName: string;
+  champions: {
+    MEN?: Team | null;
+    WOMEN?: Team | null;
+    GENERAL?: Team | null;
+  };
+  fixture: Match[];
+  teamMap: Map<number, Team>;
+}) {
+  const championItems = getChampionDisplayItems({
+    champions,
+    fixture,
+    teamMap,
+  });
+
+  const mainChampion = championItems[0];
+
+  return (
+    <section style={championOverlayShellStyle}>
+      <OverlayHeader tournamentName={tournamentName} />
+
+      <div style={championConfettiLayerStyle}>
+        <span>★</span>
+        <span>◆</span>
+        <span>✦</span>
+        <span>●</span>
+        <span>★</span>
+        <span>◆</span>
+      </div>
+
+      <section style={championHeroStyle}>
+        <div style={championSupTitleStyle}>
+          TEAMCR7STUDIO PRESENTA
+        </div>
+
+        <h1 style={championMainTitleStyle}>
+          {mainChampion.title}
+        </h1>
+
+        <div
+          style={{
+            ...championLogoRingStyle,
+            borderColor: mainChampion.color,
+            boxShadow: `0 0 45px ${mainChampion.color}55`,
+          }}
+        >
+          {mainChampion.team?.logoDataUrl ? (
+            <img
+              src={mainChampion.team.logoDataUrl}
+              alt={mainChampion.team.name}
+              style={championLogoImageStyle}
+            />
+          ) : (
+            <div style={championLogoPlaceholderStyle}>
+              🏆
+            </div>
+          )}
+        </div>
+
+        <div style={championTeamNameStyle}>
+          {mainChampion.team?.name ?? "POR DEFINIR"}
+        </div>
+
+        <div
+          style={{
+            ...championRibbonStyle,
+            borderColor: mainChampion.color,
+            color: mainChampion.color,
+          }}
+        >
+          {mainChampion.team
+            ? "¡FELICITACIONES, CAMPEONES!"
+            : "ESPERANDO RESULTADO DE LA FINAL"}
+        </div>
+      </section>
+
+      <section style={championCardsGridStyle}>
+        {championItems.map((item) => (
+          <ChampionMiniCard
+            key={item.key}
+            item={item}
+          />
+        ))}
+      </section>
+
+      <SponsorStrip />
+    </section>
+  );
+}
+
+function ChampionMiniCard({
+  item,
+}: {
+  item: ChampionDisplayItem;
+}) {
+  return (
+    <article
+      style={{
+        ...championMiniCardStyle,
+        borderColor: item.color,
+      }}
+    >
+      <div style={{ ...championMiniTitleStyle, color: item.color }}>
+        {item.title}
+      </div>
+
+      <div style={championMiniContentStyle}>
+        {item.team?.logoDataUrl ? (
+          <img
+            src={item.team.logoDataUrl}
+            alt={item.team.name}
+            style={championMiniLogoStyle}
+          />
+        ) : (
+          <div style={championMiniLogoEmptyStyle}>
+            🏆
+          </div>
+        )}
+
+        <div style={championMiniNameStyle}>
+          {item.team?.name ?? "Pendiente"}
+        </div>
+      </div>
+    </article>
+  );
+}
 
 function BracketOverlay({
   tournamentName,
@@ -2201,6 +2424,17 @@ function ControlPanel({
                 >
                   Llave / Fixture
                 </button>
+
+                <button
+                  onClick={() => setOverlayMode("CHAMPION")}
+                  style={
+                    overlayMode === "CHAMPION"
+                      ? activeModeButtonStyle
+                      : grayButtonStyle
+                  }
+                >
+                  Campeón
+                </button>
               </div>
 
               <div style={modeInfoStyle}>
@@ -2208,6 +2442,8 @@ function ControlPanel({
                   ? `Mostrando ${simultaneousCount} partido(s) de las ${simultaneousTime}`
                   : overlayMode === "BRACKET"
                   ? "Mostrando llave / fixture para pausas"
+                  : overlayMode === "CHAMPION"
+                  ? "Mostrando pantalla de campeón"
                   : "Mostrando solo el partido seleccionado"}
               </div>
             </div>
@@ -3993,6 +4229,176 @@ const bracketEmptyStyle: CSSProperties = {
 };
 
 
+
+
+/* ===================== CAMPEÓN OVERLAY ===================== */
+
+const championOverlayShellStyle: CSSProperties = {
+  width: "100%",
+  maxWidth: 1500,
+  minHeight: 860,
+  position: "relative",
+  borderRadius: 10,
+  overflow: "hidden",
+  background:
+    "radial-gradient(circle at 50% 32%, rgba(250,204,21,.22), transparent 30%), radial-gradient(circle at 50% 70%, rgba(14,165,233,.22), transparent 25%), linear-gradient(180deg, rgba(2,6,23,.18), rgba(2,6,23,.32))",
+};
+
+const championConfettiLayerStyle: CSSProperties = {
+  position: "absolute",
+  inset: 0,
+  pointerEvents: "none",
+  display: "flex",
+  justifyContent: "space-around",
+  alignItems: "flex-start",
+  color: "#facc15",
+  fontSize: 34,
+  opacity: 0.38,
+  paddingTop: 140,
+};
+
+const championHeroStyle: CSSProperties = {
+  width: "92%",
+  margin: "42px auto 0",
+  minHeight: 430,
+  display: "flex",
+  flexDirection: "column",
+  alignItems: "center",
+  justifyContent: "center",
+  background:
+    "linear-gradient(135deg, rgba(113,63,18,.82), rgba(2,6,23,.92) 45%, rgba(14,165,233,.20))",
+  border: "2px solid rgba(250,204,21,.72)",
+  borderRadius: 28,
+  boxShadow:
+    "0 0 70px rgba(250,204,21,.23), inset 0 0 45px rgba(14,165,233,.15)",
+  padding: 32,
+  position: "relative",
+  overflow: "hidden",
+};
+
+const championSupTitleStyle: CSSProperties = {
+  color: "#22d3ee",
+  fontWeight: 1000,
+  letterSpacing: 4,
+  fontSize: 15,
+  textTransform: "uppercase",
+};
+
+const championMainTitleStyle: CSSProperties = {
+  margin: "10px 0 22px",
+  color: "#facc15",
+  fontSize: 64,
+  fontWeight: 1000,
+  letterSpacing: 2,
+  textTransform: "uppercase",
+  textAlign: "center",
+  textShadow:
+    "0 5px 0 rgba(2,6,23,.85), 0 0 28px rgba(250,204,21,.35)",
+};
+
+const championLogoRingStyle: CSSProperties = {
+  width: 190,
+  height: 190,
+  borderRadius: "50%",
+  border: "4px solid #facc15",
+  background:
+    "radial-gradient(circle, rgba(15,23,42,.98), rgba(2,6,23,.98))",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  padding: 14,
+};
+
+const championLogoImageStyle: CSSProperties = {
+  width: "100%",
+  height: "100%",
+  objectFit: "contain",
+};
+
+const championLogoPlaceholderStyle: CSSProperties = {
+  fontSize: 92,
+};
+
+const championTeamNameStyle: CSSProperties = {
+  marginTop: 22,
+  color: "#f8fafc",
+  fontSize: 58,
+  fontWeight: 1000,
+  textTransform: "uppercase",
+  letterSpacing: 1,
+  textAlign: "center",
+  textShadow:
+    "0 4px 0 rgba(15,23,42,.9), 0 0 22px rgba(255,255,255,.18)",
+};
+
+const championRibbonStyle: CSSProperties = {
+  marginTop: 18,
+  background: "rgba(2,6,23,.72)",
+  border: "1px solid #facc15",
+  borderRadius: 999,
+  padding: "10px 28px",
+  fontSize: 18,
+  fontWeight: 1000,
+  letterSpacing: 1.5,
+};
+
+const championCardsGridStyle: CSSProperties = {
+  width: "92%",
+  margin: "20px auto 0",
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
+  gap: 16,
+};
+
+const championMiniCardStyle: CSSProperties = {
+  background:
+    "linear-gradient(180deg, rgba(15,23,42,.98), rgba(2,6,23,.98))",
+  border: "1px solid #334155",
+  borderRadius: 16,
+  padding: 16,
+  boxShadow: "0 14px 35px rgba(0,0,0,.28)",
+};
+
+const championMiniTitleStyle: CSSProperties = {
+  fontSize: 14,
+  fontWeight: 1000,
+  letterSpacing: 1.4,
+  marginBottom: 12,
+};
+
+const championMiniContentStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: 14,
+};
+
+const championMiniLogoStyle: CSSProperties = {
+  width: 64,
+  height: 64,
+  objectFit: "contain",
+  background: "#020617",
+  border: "1px solid #334155",
+  borderRadius: 14,
+  padding: 5,
+};
+
+const championMiniLogoEmptyStyle: CSSProperties = {
+  width: 64,
+  height: 64,
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  background: "#020617",
+  border: "1px solid #334155",
+  borderRadius: 14,
+  fontSize: 30,
+};
+
+const championMiniNameStyle: CSSProperties = {
+  fontSize: 22,
+  fontWeight: 1000,
+  textTransform: "uppercase",
+};
 
 /* ===================== PANEL CONTROL ===================== */
 
