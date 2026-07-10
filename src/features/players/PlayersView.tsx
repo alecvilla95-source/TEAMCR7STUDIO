@@ -10,6 +10,7 @@ import type { Player } from "../../types/player";
 import { useTournament } from "../../store/tournamentStore";
 import { useTeams } from "../../store/teamStore";
 import { usePlayers } from "../../store/playerStore";
+import { useLogo } from "../../store/logoStore";
 
 import {
   exportPlayerTemplate,
@@ -71,6 +72,41 @@ function printHtml(html: string) {
   printWindow.document.close();
 }
 
+function renderTeamCr7Logo() {
+  return `
+    <div class="fixed-logo-wrap">
+      <img
+        src="/teamcr7studio-logo.png"
+        class="logo-img teamcr7-logo-img"
+        alt="TEAMCR7STUDIO"
+        onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';"
+      />
+
+      <div class="fixed-logo-fallback">
+        TEAM CR7<br />STUDIO
+      </div>
+    </div>
+  `;
+}
+
+function renderChampionshipLogo(logoDataUrl: string | null) {
+  if (!logoDataUrl) {
+    return `
+      <div class="championship-placeholder">
+        LOGO DEL<br />CAMPEONATO
+      </div>
+    `;
+  }
+
+  return `
+    <img
+      src="${logoDataUrl}"
+      class="logo-img championship-logo-img"
+      alt="Logo campeonato"
+    />
+  `;
+}
+
 function renderPlayerRows(players: Player[]) {
   const rows =
     players.length > 0
@@ -98,11 +134,13 @@ function buildTeamRosterHtml({
   tournamentName,
   team,
   players,
+  logoDataUrl,
   autoPrint = true,
 }: {
   tournamentName: string;
   team: Team;
   players: Player[];
+  logoDataUrl: string | null;
   autoPrint?: boolean;
 }) {
   return `
@@ -134,43 +172,104 @@ function buildTeamRosterHtml({
 
           .top {
             display: grid;
-            grid-template-columns: 1fr 2fr 1fr;
+            grid-template-columns: 1.15fr 1.7fr 1fr;
             border: 1px solid #111827;
             margin-bottom: 0;
           }
 
           .logo-box,
           .title-box,
-          .blank-box {
-            min-height: 115px;
+          .championship-box {
+            min-height: 145px;
             border-right: 1px solid #111827;
             display: flex;
             align-items: center;
             justify-content: center;
             text-align: center;
-            padding: 10px;
           }
 
-          .blank-box {
+          .logo-box {
+            padding: 4px;
+          }
+
+          .title-box {
+            padding: 10px 14px;
+          }
+
+          .championship-box {
             border-right: none;
+            background: #fafafa;
+            padding: 8px;
           }
 
-          .logo-placeholder {
-            font-weight: bold;
+          .fixed-logo-wrap {
+            width: 100%;
+            height: 132px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+          }
+
+          .logo-img {
+            max-width: 100%;
+            max-height: 100px;
+            object-fit: contain;
+          }
+
+          .teamcr7-logo-img {
+            max-width: 98%;
+            max-height: 130px;
+            object-fit: contain;
+          }
+
+          .championship-logo-img {
+            max-width: 100%;
+            max-height: 95px;
+            object-fit: contain;
+          }
+
+          .fixed-logo-fallback {
+            width: 100%;
+            height: 100%;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            font-weight: 900;
+            line-height: 1.1;
+            color: #111827;
+          }
+
+          .championship-placeholder {
             font-size: 13px;
+            font-weight: 900;
             color: #6b7280;
+            line-height: 1.2;
+            text-transform: uppercase;
           }
 
           .title-box h1 {
             margin: 0;
-            font-size: 22px;
+            font-size: 24px;
             text-transform: uppercase;
+            line-height: 1.15;
+            font-weight: 900;
           }
 
           .title-box h2 {
             margin: 8px 0 0;
-            font-size: 26px;
+            font-size: 28px;
             text-transform: uppercase;
+            line-height: 1.15;
+            font-weight: 900;
+          }
+
+          .right-title-small {
+            font-size: 12px;
+            font-weight: 900;
+            color: #6b7280;
+            text-transform: uppercase;
+            margin-bottom: 8px;
           }
 
           table.info {
@@ -183,7 +282,7 @@ function buildTeamRosterHtml({
             border: 1px solid #111827;
             padding: 10px;
             font-size: 14px;
-            height: 36px;
+            height: 38px;
           }
 
           table.info td:first-child {
@@ -196,10 +295,18 @@ function buildTeamRosterHtml({
             font-weight: bold;
           }
 
+          .team-name-big {
+            font-size: 30px !important;
+            font-weight: 900 !important;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            line-height: 1.1;
+          }
+
           .category {
             text-align: center;
             font-size: 24px;
-            font-weight: bold;
+            font-weight: 900;
             text-transform: uppercase;
           }
 
@@ -255,9 +362,7 @@ function buildTeamRosterHtml({
         <div class="sheet">
           <div class="top">
             <div class="logo-box">
-              <div class="logo-placeholder">
-                LOGO<br />ORGANIZADOR
-              </div>
+              ${renderTeamCr7Logo()}
             </div>
 
             <div class="title-box">
@@ -267,14 +372,22 @@ function buildTeamRosterHtml({
               </div>
             </div>
 
-            <div class="blank-box"></div>
+            <div class="championship-box">
+              <div>
+                <div class="right-title-small">
+                  LOGO DEL CAMPEONATO
+                </div>
+
+                ${renderChampionshipLogo(logoDataUrl)}
+              </div>
+            </div>
           </div>
 
           <table class="info">
             <tbody>
               <tr>
                 <td>EQUIPO:</td>
-                <td>${escapeHtml(team.name)}</td>
+                <td class="team-name-big">${escapeHtml(team.name)}</td>
               </tr>
 
               <tr>
@@ -349,10 +462,12 @@ function buildAllRostersHtml({
   tournamentName,
   teams,
   players,
+  logoDataUrl,
 }: {
   tournamentName: string;
   teams: Team[];
   players: Player[];
+  logoDataUrl: string | null;
 }) {
   const orderedTeams = [...teams].sort((a, b) => {
     const categoryA = a.category === "WOMEN" ? 2 : 1;
@@ -379,6 +494,7 @@ function buildAllRostersHtml({
         tournamentName,
         team,
         players: teamPlayers,
+        logoDataUrl,
         autoPrint: false,
       })
         .replace(/<!doctype html>[\s\S]*?<body>/, "")
@@ -416,43 +532,104 @@ function buildAllRostersHtml({
 
           .top {
             display: grid;
-            grid-template-columns: 1fr 2fr 1fr;
+            grid-template-columns: 1.15fr 1.7fr 1fr;
             border: 1px solid #111827;
             margin-bottom: 0;
           }
 
           .logo-box,
           .title-box,
-          .blank-box {
-            min-height: 115px;
+          .championship-box {
+            min-height: 145px;
             border-right: 1px solid #111827;
             display: flex;
             align-items: center;
             justify-content: center;
             text-align: center;
-            padding: 10px;
           }
 
-          .blank-box {
+          .logo-box {
+            padding: 4px;
+          }
+
+          .title-box {
+            padding: 10px 14px;
+          }
+
+          .championship-box {
             border-right: none;
+            background: #fafafa;
+            padding: 8px;
           }
 
-          .logo-placeholder {
-            font-weight: bold;
+          .fixed-logo-wrap {
+            width: 100%;
+            height: 132px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+          }
+
+          .logo-img {
+            max-width: 100%;
+            max-height: 100px;
+            object-fit: contain;
+          }
+
+          .teamcr7-logo-img {
+            max-width: 98%;
+            max-height: 130px;
+            object-fit: contain;
+          }
+
+          .championship-logo-img {
+            max-width: 100%;
+            max-height: 95px;
+            object-fit: contain;
+          }
+
+          .fixed-logo-fallback {
+            width: 100%;
+            height: 100%;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            font-weight: 900;
+            line-height: 1.1;
+            color: #111827;
+          }
+
+          .championship-placeholder {
             font-size: 13px;
+            font-weight: 900;
             color: #6b7280;
+            line-height: 1.2;
+            text-transform: uppercase;
           }
 
           .title-box h1 {
             margin: 0;
-            font-size: 22px;
+            font-size: 24px;
             text-transform: uppercase;
+            line-height: 1.15;
+            font-weight: 900;
           }
 
           .title-box h2 {
             margin: 8px 0 0;
-            font-size: 26px;
+            font-size: 28px;
             text-transform: uppercase;
+            line-height: 1.15;
+            font-weight: 900;
+          }
+
+          .right-title-small {
+            font-size: 12px;
+            font-weight: 900;
+            color: #6b7280;
+            text-transform: uppercase;
+            margin-bottom: 8px;
           }
 
           table.info {
@@ -465,7 +642,7 @@ function buildAllRostersHtml({
             border: 1px solid #111827;
             padding: 10px;
             font-size: 14px;
-            height: 36px;
+            height: 38px;
           }
 
           table.info td:first-child {
@@ -478,10 +655,18 @@ function buildAllRostersHtml({
             font-weight: bold;
           }
 
+          .team-name-big {
+            font-size: 30px !important;
+            font-weight: 900 !important;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            line-height: 1.1;
+          }
+
           .category {
             text-align: center;
             font-size: 24px;
-            font-weight: bold;
+            font-weight: 900;
             text-transform: uppercase;
           }
 
@@ -560,6 +745,8 @@ export default function PlayersView() {
     getPlayersByTeam,
     setPlayersForTeam,
   } = usePlayers();
+
+  const { logoDataUrl } = useLogo();
 
   const [expandedTeamId, setExpandedTeamId] =
     useState<number | null>(null);
@@ -658,6 +845,7 @@ export default function PlayersView() {
       tournamentName: tournament?.name ?? "Campeonato",
       team,
       players: teamPlayers,
+      logoDataUrl,
     });
 
     printHtml(html);
@@ -673,6 +861,7 @@ export default function PlayersView() {
       tournamentName: tournament?.name ?? "Campeonato",
       teams,
       players,
+      logoDataUrl,
     });
 
     printHtml(html);
@@ -814,6 +1003,12 @@ export default function PlayersView() {
               Descarga las fichas Excel, entrégalas para que las rellenen y
               luego súbelas al sistema.
             </p>
+
+            {logoDataUrl && (
+              <div style={logoNotice}>
+                🖼 Logo del campeonato activo para fichas impresas/PDF
+              </div>
+            )}
           </div>
 
           <div style={headerActions}>
@@ -1277,6 +1472,17 @@ const headerActions: CSSProperties = {
   display: "flex",
   gap: 12,
   flexWrap: "wrap",
+};
+
+const logoNotice: CSSProperties = {
+  marginTop: 12,
+  background: "#064e3b",
+  border: "1px solid #16a34a",
+  color: "#bbf7d0",
+  borderRadius: 10,
+  padding: 10,
+  fontWeight: "bold",
+  display: "inline-block",
 };
 
 const summaryGrid: CSSProperties = {
