@@ -41,22 +41,50 @@ function getCategoryLabel(
   return "GENERAL";
 }
 
+function getWomenFieldLetter(index: number) {
+  const letters = ["A", "B", "C", "D"];
+
+  return letters[index - 1] ?? String(index);
+}
+
+function replaceOldCourtText(label: string) {
+  return label
+    .replaceAll("C. Mujer 1", "Campo A")
+    .replaceAll("C. Mujer 2", "Campo B")
+    .replaceAll("C. Mujer 3", "Campo C")
+    .replaceAll("C. Mujer 4", "Campo D")
+    .replaceAll("Cancha 1", "Campo 1")
+    .replaceAll("Cancha 2", "Campo 2")
+    .replaceAll("Cancha 3", "Campo 3")
+    .replaceAll("Cancha 4", "Campo 4")
+    .replaceAll("cancha", "campo")
+    .replaceAll("Cancha", "Campo")
+    .replaceAll("canchas", "campos")
+    .replaceAll("Canchas", "Campos");
+}
+
 function getCourtLabel(team: Team) {
-  if (team.category === "WOMEN") {
-    return `C. Mujer ${team.assignedCourt ?? "-"}`;
+  if (!team.assignedCourt) {
+    return "Sin campo";
   }
 
-  return `Cancha ${team.assignedCourt ?? "-"}`;
+  if (team.category === "WOMEN") {
+    return `Campo ${getWomenFieldLetter(team.assignedCourt)}`;
+  }
+
+  return `Campo ${team.assignedCourt}`;
 }
 
 function getMatchCourtLabel(match: Match) {
-  if (match.courtLabel) return match.courtLabel;
-
-  if (match.category === "WOMEN") {
-    return `C. Mujer ${match.court || "-"}`;
+  if (match.courtLabel) {
+    return replaceOldCourtText(match.courtLabel);
   }
 
-  return `Cancha ${match.court || "-"}`;
+  if (match.category === "WOMEN") {
+    return `Campo ${getWomenFieldLetter(match.court || 1)}`;
+  }
+
+  return `Campo ${match.court || 1}`;
 }
 
 function calculateTopScorers(
@@ -362,7 +390,7 @@ export default function DashboardView() {
 
           <div style={sectionBox}>
             <SectionTitle
-              title="🏟 Equipos por cancha"
+              title="🏟 Equipos por campo"
               subtitle="Distribución visual de equipos en columnas"
             />
 
