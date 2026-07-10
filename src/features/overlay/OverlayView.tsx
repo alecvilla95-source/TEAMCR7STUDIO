@@ -1335,38 +1335,47 @@ function BracketOverlay({
       match.category === "WOMEN"
   );
 
-  const hasWomen = womenMatches.length > 0;
+  const totalFinished = fixture.filter(
+    (match) => match.status === "FINISHED"
+  ).length;
 
   return (
     <section style={bracketOverlayShellStyle}>
       <OverlayHeader tournamentName={tournamentName} />
 
-      <section style={bracketTitleBoxStyle}>
+      <section style={bracketHeroStyle}>
         <div>
           <div style={bracketSmallTitleStyle}>
-            MODO PAUSA / FIXTURE
+            MODO PAUSA · FIXTURE EN VIVO
           </div>
 
           <h1 style={bracketMainTitleStyle}>
-            LLAVE DEL CAMPEONATO
+            LLAVE TIPO COPA DEL MUNDO
           </h1>
 
           <p style={bracketSubtitleStyle}>
-            16avos → 8vos → Cuartos → Semifinal → Final
+            Cancha 1 avanza de izquierda a derecha · Cancha 2 avanza de derecha a izquierda · La final se junta al centro
           </p>
         </div>
 
-        <div style={bracketBrandPillStyle}>
-          #TEAMCR7STUDIO
+        <div style={bracketHeroStatsStyle}>
+          <div style={bracketStatBoxStyle}>
+            <span>Partidos</span>
+            <strong>{fixture.length}</strong>
+          </div>
+
+          <div style={bracketStatBoxStyle}>
+            <span>Jugados</span>
+            <strong>{totalFinished}</strong>
+          </div>
+
+          <div style={bracketBrandPillStyle}>
+            #TEAMCR7STUDIO
+          </div>
         </div>
       </section>
 
-      <section
-        style={{
-          ...bracketCategoriesStyle,
-          gridTemplateColumns: hasWomen ? "1fr 1fr" : "1fr",
-        }}
-      >
+      <section style={bracketCategoriesStyle}>
         <BracketCategory
           title="VARONES"
           color="#38bdf8"
@@ -1374,7 +1383,7 @@ function BracketOverlay({
           teamMap={teamMap}
         />
 
-        {hasWomen && (
+        {womenMatches.length > 0 && (
           <BracketCategory
             title="MUJERES"
             color="#f9a8d4"
@@ -1400,7 +1409,25 @@ function BracketCategory({
   matches: Match[];
   teamMap: Map<number, Team>;
 }) {
-  const rounds = getBracketRounds(matches);
+  const finalMatch = getBracketFinalMatch(matches);
+
+  const playableMatches = finalMatch
+    ? matches.filter((match) => match.id !== finalMatch.id)
+    : matches;
+
+  const courtGroups = getBracketCourtGroups(playableMatches);
+
+  const leftGroup = courtGroups[0] ?? null;
+
+  const rightGroup = courtGroups[1] ?? null;
+
+  const extraGroups = courtGroups.slice(2);
+
+  const leftChampion = getSideChampion(leftGroup?.matches ?? []);
+
+  const rightChampion = getSideChampion(rightGroup?.matches ?? []);
+
+  const champion = finalMatch?.winner ?? null;
 
   return (
     <section
@@ -1425,53 +1452,369 @@ function BracketCategory({
           </h2>
         </div>
 
-        <div
-          style={{
-            ...bracketCountBadgeStyle,
-            borderColor: color,
-            color,
-          }}
-        >
-          {matches.length} partido(s)
+        <div style={bracketHeaderRightStyle}>
+          <div
+            style={{
+              ...bracketCountBadgeStyle,
+              borderColor: color,
+              color,
+            }}
+          >
+            {matches.length} partido(s)
+          </div>
+
+          <div style={bracketChampionMiniStyle}>
+            <span>Campeón</span>
+            <strong>{champion?.name ?? "Pendiente"}</strong>
+          </div>
         </div>
       </div>
 
-      {rounds.length === 0 ? (
+      {matches.length === 0 ? (
         <div style={bracketEmptyStyle}>
           Todavía no hay llave generada para esta categoría.
         </div>
       ) : (
-        <div style={bracketRoundsStyle}>
-          {rounds.map((round) => (
-            <div
-              key={round.round}
-              style={bracketRoundColumnStyle}
-            >
-              <div
-                style={{
-                  ...bracketRoundTitleStyle,
-                  color,
-                }}
-              >
-                {round.title}
+        <>
+          <div style={mirrorBracketStageStyle}>
+            <MirrorBracketSide
+              label={leftGroup?.label ?? "Cancha 1"}
+              matches={leftGroup?.matches ?? []}
+              color={color}
+              teamMap={teamMap}
+              side="left"
+            />
+
+            <BracketFinalCenter
+              finalMatch={finalMatch}
+              leftChampion={leftChampion}
+              rightChampion={rightChampion}
+              color={color}
+              teamMap={teamMap}
+            />
+
+            <MirrorBracketSide
+              label={rightGroup?.label ?? "Cancha 2"}
+              matches={rightGroup?.matches ?? []}
+              color={color}
+              teamMap={teamMap}
+              side="right"
+            />
+          </div>
+
+          {extraGroups.length > 0 && (
+            <div style={extraCourtsBoxStyle}>
+              <div style={extraCourtsTitleStyle}>
+                Otras canchas
               </div>
 
-              <div style={bracketMatchListStyle}>
-                {round.matches.map((match) => (
-                  <BracketMatchCard
-                    key={match.id}
-                    match={match}
-                    teamMap={teamMap}
+              <div style={extraCourtsGridStyle}>
+                {extraGroups.map((group) => (
+                  <MirrorBracketSide
+                    key={group.label}
+                    label={group.label}
+                    matches={group.matches}
                     color={color}
+                    teamMap={teamMap}
+                    side="left"
+                    compact
                   />
                 ))}
               </div>
             </div>
-          ))}
+          )}
+        </>
+      )}
+    </section>
+  );
+}
+
+function MirrorBracketSide({
+  label,
+  matches,
+  color,
+  teamMap,
+  side,
+  compact = false,
+}: {
+  label: string;
+  matches: Match[];
+  color: string;
+  teamMap: Map<number, Team>;
+  side: "left" | "right";
+  compact?: boolean;
+}) {
+  const rounds = getBracketRounds(matches);
+
+  const displayedRounds = side === "left"
+    ? rounds
+    : [...rounds].reverse();
+
+  return (
+    <section
+      style={{
+        ...mirrorSideBoxStyle,
+        borderColor: color,
+      }}
+    >
+      <div
+        style={{
+          ...mirrorSideTitleStyle,
+          borderColor: color,
+          color,
+          textAlign: side === "left" ? "left" : "right",
+        }}
+      >
+        <strong>{label}</strong>
+        <span>
+          {side === "left"
+            ? "Avanza →"
+            : "← Avanza"}
+        </span>
+      </div>
+
+      {rounds.length === 0 ? (
+        <div style={bracketEmptyStyle}>
+          Todavía no hay partidos en esta cancha.
+        </div>
+      ) : (
+        <div
+          style={{
+            ...mirrorRoundsGridStyle,
+            gridAutoColumns: compact
+              ? "minmax(155px, 1fr)"
+              : "minmax(132px, 1fr)",
+          }}
+        >
+          {displayedRounds.map((round, displayIndex) => {
+            const showConnector = side === "left"
+              ? displayIndex < displayedRounds.length - 1
+              : displayIndex > 0;
+
+            return (
+              <div
+                key={`${side}-${round.round}-${round.title}`}
+                style={bracketRoundColumnStyle}
+              >
+                <div
+                  style={{
+                    ...bracketRoundTitleStyle,
+                    borderColor: color,
+                    color,
+                  }}
+                >
+                  <span>{round.title}</span>
+                  <small>{round.matches.length}</small>
+                </div>
+
+                <div style={bracketMatchListStyle}>
+                  {round.matches.map((match) => (
+                    <BracketMatchCard
+                      key={match.id}
+                      match={match}
+                      teamMap={teamMap}
+                      color={color}
+                      showConnector={showConnector}
+                      connectorSide={side === "left" ? "right" : "left"}
+                    />
+                  ))}
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
     </section>
   );
+}
+
+function BracketFinalCenter({
+  finalMatch,
+  leftChampion,
+  rightChampion,
+  color,
+  teamMap,
+}: {
+  finalMatch: Match | null;
+  leftChampion: Team | null;
+  rightChampion: Team | null;
+  color: string;
+  teamMap: Map<number, Team>;
+}) {
+  const teamA = getTeamWithLogo(
+    finalMatch?.teamA ?? leftChampion,
+    teamMap
+  );
+
+  const teamB = getTeamWithLogo(
+    finalMatch?.teamB ?? rightChampion,
+    teamMap
+  );
+
+  const teamAName = finalMatch
+    ? getTeamName(
+        teamA,
+        finalMatch.sourceMatchA
+          ? `Ganador P${finalMatch.sourceMatchA}`
+          : "Finalista Cancha 1"
+      )
+    : teamA?.name ?? "Finalista Cancha 1";
+
+  const teamBName = finalMatch
+    ? getTeamName(
+        teamB,
+        finalMatch.sourceMatchB
+          ? `Ganador P${finalMatch.sourceMatchB}`
+          : "Finalista Cancha 2"
+      )
+    : teamB?.name ?? "Finalista Cancha 2";
+
+  return (
+    <section
+      style={{
+        ...finalCenterBoxStyle,
+        borderColor: color,
+      }}
+    >
+      <div style={finalCrownStyle}>🏆</div>
+
+      <div
+        style={{
+          ...finalTitleStyle,
+          color,
+        }}
+      >
+        GRAN FINAL
+      </div>
+
+      <div style={finalSubtitleStyle}>
+        Se juntan los finalistas
+      </div>
+
+      <div style={finalMatchCardStyle}>
+        <BracketTeamRow
+          team={teamA}
+          name={teamAName}
+          score={finalMatch?.scoreA ?? 0}
+          isWinner={finalMatch?.winner?.id === teamA?.id}
+          color={color}
+        />
+
+        <div style={finalVsStyle}>VS</div>
+
+        <BracketTeamRow
+          team={teamB}
+          name={teamBName}
+          score={finalMatch?.scoreB ?? 0}
+          isWinner={finalMatch?.winner?.id === teamB?.id}
+          color={color}
+        />
+      </div>
+
+      <div style={finalWinnerStyle}>
+        {finalMatch?.winner ? (
+          <>
+            <span>Campeón</span>
+            <strong>{finalMatch.winner.name}</strong>
+          </>
+        ) : (
+          <>
+            <span>Campeón</span>
+            <strong>Pendiente</strong>
+          </>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function getBracketFinalMatch(matches: Match[]) {
+  const knockoutMatches = matches.filter(
+    (match) => match.stage !== "GROUP"
+  );
+
+  const explicitFinal = knockoutMatches.find((match) =>
+    (match.courtLabel ?? "")
+      .toUpperCase()
+      .includes("FINAL")
+  );
+
+  if (explicitFinal) return explicitFinal;
+
+  const terminal = knockoutMatches.find(
+    (match) => !match.nextMatchId
+  );
+
+  if (terminal) return terminal;
+
+  return [...knockoutMatches].sort((a, b) => {
+    if ((b.round ?? 0) !== (a.round ?? 0)) {
+      return (b.round ?? 0) - (a.round ?? 0);
+    }
+
+    return b.id - a.id;
+  })[0] ?? null;
+}
+
+function getSideChampion(matches: Match[]) {
+  return [...matches]
+    .sort((a, b) => {
+      if ((b.round ?? 0) !== (a.round ?? 0)) {
+        return (b.round ?? 0) - (a.round ?? 0);
+      }
+
+      return b.id - a.id;
+    })
+    .find((match) => match.winner)
+    ?.winner ?? null;
+}
+
+function getBracketCourtGroups(matches: Match[]) {
+  const map = new Map<string, Match[]>();
+
+  matches.forEach((match) => {
+    const label = getCourtLabel(match);
+
+    if (
+      label
+        .toUpperCase()
+        .includes("FINAL")
+    ) {
+      return;
+    }
+
+    if (!map.has(label)) {
+      map.set(label, []);
+    }
+
+    map.get(label)!.push(match);
+  });
+
+  return Array.from(map.entries())
+    .map(([label, list]) => ({
+      label,
+      matches: sortMatchesForOverlay(list),
+      order: getBracketCourtOrder(label, list),
+    }))
+    .sort((a, b) => {
+      if (a.order !== b.order) {
+        return a.order - b.order;
+      }
+
+      return a.label.localeCompare(b.label);
+    });
+}
+
+function getBracketCourtOrder(label: string, matches: Match[]) {
+  const normalized = label.toUpperCase();
+
+  const courtNumber = matches[0]?.court ?? Number(label.match(/\d+/)?.[0] ?? 0);
+
+  if (normalized.includes("MUJER")) {
+    return 40 + courtNumber;
+  }
+
+  return courtNumber || 99;
 }
 
 function getBracketRounds(matches: Match[]) {
@@ -1532,7 +1875,7 @@ function getBracketRoundTitle(
 
   if (matches.length === 2) return "SEMIFINAL";
 
-  if (matches.length === 1) return "FINAL";
+  if (matches.length === 1) return "FINALISTA";
 
   return `RONDA ${round}`;
 }
@@ -1541,10 +1884,14 @@ function BracketMatchCard({
   match,
   teamMap,
   color,
+  showConnector,
+  connectorSide,
 }: {
   match: Match;
   teamMap: Map<number, Team>;
   color: string;
+  showConnector: boolean;
+  connectorSide: "left" | "right";
 }) {
   const teamA = getTeamWithLogo(
     match.teamA,
@@ -1571,42 +1918,62 @@ function BracketMatchCard({
   );
 
   return (
-    <article style={bracketMatchCardStyle}>
-      <div style={bracketMatchMetaStyle}>
-        <span>Partido {match.id}</span>
-        <span>{getCourtLabel(match)}</span>
-      </div>
+    <div style={bracketMatchWrapStyle}>
+      <article
+        style={{
+          ...bracketMatchCardStyle,
+          borderColor:
+            match.status === "FINISHED"
+              ? color
+              : "#334155",
+        }}
+      >
+        <div style={bracketMatchMetaStyle}>
+          <span>P{match.id}</span>
+          <span>{getCourtLabel(match)}</span>
+          <span>{match.time || "--:--"}</span>
+        </div>
 
-      <BracketTeamRow
-        team={teamA}
-        name={teamAName}
-        score={match.scoreA}
-        isWinner={match.winner?.id === teamA?.id}
-        color={color}
-      />
+        <BracketTeamRow
+          team={teamA}
+          name={teamAName}
+          score={match.scoreA}
+          isWinner={match.winner?.id === teamA?.id}
+          color={color}
+        />
 
-      <BracketTeamRow
-        team={teamB}
-        name={teamBName}
-        score={match.scoreB}
-        isWinner={match.winner?.id === teamB?.id}
-        color={color}
-      />
+        <BracketTeamRow
+          team={teamB}
+          name={teamBName}
+          score={match.scoreB}
+          isWinner={match.winner?.id === teamB?.id}
+          color={color}
+        />
 
-      {match.winner && (
+        <div style={bracketFooterLineStyle}>
+          {match.winner ? (
+            <span style={{ color }}>
+              Avanza: {match.winner.name}
+            </span>
+          ) : (
+            <span>Ganador pendiente</span>
+          )}
+        </div>
+      </article>
+
+      {showConnector && (
         <div
           style={{
-            ...bracketWinnerStyle,
+            ...bracketConnectorStyle,
             borderColor: color,
+            left: connectorSide === "left" ? -16 : undefined,
+            right: connectorSide === "right" ? -16 : undefined,
           }}
-        >
-          Avanza: {match.winner.name}
-        </div>
+        />
       )}
-    </article>
+    </div>
   );
 }
-
 
 function BracketSmallLogo({
   team,
@@ -1649,13 +2016,17 @@ function BracketTeamRow({
         ...bracketTeamRowStyle,
         borderColor: isWinner ? color : "#334155",
         background: isWinner
-          ? "rgba(22, 163, 74, 0.18)"
+          ? "linear-gradient(90deg, rgba(22,163,74,.28), rgba(15,23,42,.96))"
           : "#020617",
+        boxShadow: isWinner
+          ? `0 0 18px ${color}55`
+          : "none",
       }}
     >
       <BracketSmallLogo team={team} />
 
       <div style={bracketTeamNameStyle}>
+        {isWinner && <span style={winnerDotStyle}>●</span>}
         {name}
       </div>
 
@@ -1670,6 +2041,7 @@ function BracketTeamRow({
     </div>
   );
 }
+
 
 function ControlPanel({
   fixture,
@@ -3197,64 +3569,92 @@ const multiBottomBarStyle: CSSProperties = {
 /* ===================== OVERLAY LLAVE ===================== */
 
 const bracketOverlayShellStyle: CSSProperties = {
-  width: "100%",
-  maxWidth: 1500,
-  minHeight: 820,
+  width: 1080,
+  maxWidth: "100%",
+  minHeight: 1090,
   position: "relative",
-  borderRadius: 10,
+  borderRadius: 12,
   overflow: "hidden",
+  background:
+    "radial-gradient(circle at 50% 42%, rgba(14,165,233,.18), transparent 28%), linear-gradient(180deg, rgba(2,6,23,.18), rgba(2,6,23,.28))",
 };
 
-const bracketTitleBoxStyle: CSSProperties = {
-  margin: "34px auto 20px",
-  width: "92%",
+const bracketHeroStyle: CSSProperties = {
+  margin: "20px auto 14px",
+  width: "96%",
   display: "flex",
   justifyContent: "space-between",
-  gap: 24,
+  gap: 16,
   alignItems: "center",
   background:
-    "linear-gradient(135deg, rgba(15,23,42,.98), rgba(2,6,23,.92))",
-  border: "2px solid rgba(14,165,233,.75)",
+    "linear-gradient(135deg, rgba(15,23,42,.98), rgba(2,6,23,.94))",
+  border: "2px solid rgba(14,165,233,.78)",
   borderRadius: 18,
-  padding: "22px 30px",
-  boxShadow: "0 0 30px rgba(14,165,233,.32)",
+  padding: "16px 20px",
+  boxShadow:
+    "0 0 34px rgba(14,165,233,.32), inset 0 0 28px rgba(14,165,233,.10)",
 };
 
 const bracketSmallTitleStyle: CSSProperties = {
   color: "#facc15",
-  fontSize: 14,
+  fontSize: 12,
   fontWeight: 1000,
   letterSpacing: 2,
 };
 
 const bracketMainTitleStyle: CSSProperties = {
-  margin: "6px 0",
-  fontSize: 42,
+  margin: "5px 0",
+  fontSize: 32,
   fontWeight: 1000,
   lineHeight: 1,
+  textTransform: "uppercase",
+  textShadow: "0 0 18px rgba(14,165,233,.35)",
 };
 
 const bracketSubtitleStyle: CSSProperties = {
   margin: 0,
   color: "#cbd5e1",
-  fontSize: 18,
+  fontSize: 12,
+  fontWeight: 800,
+  maxWidth: 640,
+};
+
+const bracketHeroStatsStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "flex-end",
+  gap: 8,
+  flexWrap: "wrap",
+};
+
+const bracketStatBoxStyle: CSSProperties = {
+  minWidth: 78,
+  background: "#020617",
+  border: "1px solid #334155",
+  borderRadius: 12,
+  padding: "8px 10px",
+  display: "grid",
+  gap: 3,
+  textAlign: "center",
+  fontSize: 11,
 };
 
 const bracketBrandPillStyle: CSSProperties = {
   background: "#020617",
   border: "1px solid #0ea5e9",
   borderRadius: 999,
-  padding: "14px 22px",
+  padding: "11px 14px",
   color: "#22d3ee",
   fontWeight: 1000,
   letterSpacing: 1,
+  fontSize: 11,
 };
 
 const bracketCategoriesStyle: CSSProperties = {
-  width: "92%",
+  width: "96%",
   margin: "0 auto",
   display: "grid",
-  gap: 20,
+  gap: 14,
   alignItems: "start",
 };
 
@@ -3263,116 +3663,285 @@ const bracketCategoryBoxStyle: CSSProperties = {
     "linear-gradient(180deg, rgba(15,23,42,.98), rgba(2,6,23,.98))",
   border: "2px solid #38bdf8",
   borderRadius: 18,
-  padding: 18,
+  padding: 14,
   boxShadow:
     "0 18px 45px rgba(0,0,0,.38), inset 0 0 22px rgba(14,165,233,.14)",
-  minHeight: 430,
 };
 
 const bracketCategoryHeaderStyle: CSSProperties = {
   display: "flex",
   justifyContent: "space-between",
   alignItems: "center",
-  gap: 16,
-  marginBottom: 16,
+  gap: 12,
+  marginBottom: 12,
+  borderBottom: "1px solid rgba(148,163,184,.24)",
+  paddingBottom: 10,
 };
 
 const bracketCategoryLabelStyle: CSSProperties = {
-  fontSize: 12,
+  fontSize: 11,
   fontWeight: 1000,
   letterSpacing: 2,
 };
 
 const bracketCategoryTitleStyle: CSSProperties = {
-  margin: "4px 0 0",
-  fontSize: 30,
+  margin: "3px 0 0",
+  fontSize: 24,
   fontWeight: 1000,
+};
+
+const bracketHeaderRightStyle: CSSProperties = {
+  display: "flex",
+  gap: 8,
+  alignItems: "center",
+  flexWrap: "wrap",
+  justifyContent: "flex-end",
 };
 
 const bracketCountBadgeStyle: CSSProperties = {
   border: "1px solid",
   borderRadius: 999,
-  padding: "8px 12px",
+  padding: "7px 10px",
   fontWeight: 1000,
   background: "#020617",
+  fontSize: 11,
 };
 
-const bracketRoundsStyle: CSSProperties = {
+const bracketChampionMiniStyle: CSSProperties = {
+  background: "#020617",
+  border: "1px solid #334155",
+  borderRadius: 12,
+  padding: "7px 10px",
   display: "grid",
-  gridTemplateColumns:
-    "repeat(auto-fit, minmax(210px, 1fr))",
+  gap: 2,
+  minWidth: 150,
+  fontSize: 11,
+};
+
+const mirrorBracketStageStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "minmax(0, 1fr) 210px minmax(0, 1fr)",
+  gap: 12,
+  alignItems: "stretch",
+};
+
+const mirrorSideBoxStyle: CSSProperties = {
+  minWidth: 0,
+  background: "rgba(2,6,23,.50)",
+  border: "1px solid rgba(51,65,85,.95)",
+  borderRadius: 14,
+  padding: 10,
+  overflow: "hidden",
+};
+
+const mirrorSideTitleStyle: CSSProperties = {
+  background:
+    "linear-gradient(180deg, rgba(2,6,23,.98), rgba(15,23,42,.98))",
+  border: "1px solid #334155",
+  borderRadius: 10,
+  padding: "8px 10px",
+  marginBottom: 10,
+  display: "flex",
+  justifyContent: "space-between",
+  gap: 10,
+  alignItems: "center",
+  fontWeight: 1000,
+  textTransform: "uppercase",
+  letterSpacing: 1,
+  fontSize: 11,
+};
+
+const mirrorRoundsGridStyle: CSSProperties = {
+  width: "100%",
+  overflowX: "auto",
+  display: "grid",
+  gridAutoFlow: "column",
   gap: 14,
-  alignItems: "start",
+  alignItems: "stretch",
+  padding: "4px 2px 8px",
+};
+
+const finalCenterBoxStyle: CSSProperties = {
+  minHeight: 360,
+  alignSelf: "center",
+  background:
+    "radial-gradient(circle at 50% 0%, rgba(250,204,21,.22), transparent 36%), linear-gradient(180deg, rgba(15,23,42,.99), rgba(2,6,23,.99))",
+  border: "2px solid #facc15",
+  borderRadius: 20,
+  padding: 14,
+  display: "flex",
+  flexDirection: "column",
+  justifyContent: "center",
+  textAlign: "center",
+  boxShadow:
+    "0 0 34px rgba(250,204,21,.26), inset 0 0 22px rgba(250,204,21,.10)",
+};
+
+const finalCrownStyle: CSSProperties = {
+  fontSize: 38,
+  lineHeight: 1,
+  marginBottom: 6,
+};
+
+const finalTitleStyle: CSSProperties = {
+  fontSize: 24,
+  fontWeight: 1000,
+  letterSpacing: 1,
+  textTransform: "uppercase",
+};
+
+const finalSubtitleStyle: CSSProperties = {
+  color: "#cbd5e1",
+  fontSize: 11,
+  fontWeight: 800,
+  marginTop: 4,
+  marginBottom: 12,
+  textTransform: "uppercase",
+};
+
+const finalMatchCardStyle: CSSProperties = {
+  background: "rgba(2,6,23,.72)",
+  border: "1px solid #334155",
+  borderRadius: 14,
+  padding: 9,
+};
+
+const finalVsStyle: CSSProperties = {
+  color: "#facc15",
+  fontWeight: 1000,
+  fontSize: 15,
+  margin: "5px 0 9px",
+};
+
+const finalWinnerStyle: CSSProperties = {
+  marginTop: 12,
+  background: "#020617",
+  border: "1px solid #facc15",
+  borderRadius: 12,
+  padding: "10px 8px",
+  display: "grid",
+  gap: 3,
+  fontSize: 12,
+};
+
+const extraCourtsBoxStyle: CSSProperties = {
+  marginTop: 12,
+  borderTop: "1px solid rgba(148,163,184,.22)",
+  paddingTop: 12,
+};
+
+const extraCourtsTitleStyle: CSSProperties = {
+  color: "#facc15",
+  fontWeight: 1000,
+  fontSize: 12,
+  letterSpacing: 1,
+  marginBottom: 8,
+  textTransform: "uppercase",
+};
+
+const extraCourtsGridStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
+  gap: 12,
 };
 
 const bracketRoundColumnStyle: CSSProperties = {
   display: "grid",
+  gridTemplateRows: "auto 1fr",
   gap: 10,
+  minWidth: 132,
 };
 
 const bracketRoundTitleStyle: CSSProperties = {
-  background: "#020617",
+  background:
+    "linear-gradient(180deg, rgba(2,6,23,.98), rgba(15,23,42,.98))",
   border: "1px solid #334155",
   borderRadius: 10,
-  padding: "10px 12px",
+  padding: "8px 8px",
   textAlign: "center",
   fontWeight: 1000,
   letterSpacing: 1,
+  display: "grid",
+  gap: 2,
+  fontSize: 10,
+  boxShadow: "inset 0 0 16px rgba(14,165,233,.12)",
 };
 
 const bracketMatchListStyle: CSSProperties = {
-  display: "grid",
+  display: "flex",
+  flexDirection: "column",
+  justifyContent: "space-around",
   gap: 10,
+  minHeight: 245,
+};
+
+const bracketMatchWrapStyle: CSSProperties = {
+  position: "relative",
 };
 
 const bracketMatchCardStyle: CSSProperties = {
-  background: "#0f172a",
+  background:
+    "linear-gradient(180deg, rgba(15,23,42,.98), rgba(2,6,23,.98))",
   border: "1px solid #334155",
   borderRadius: 12,
-  padding: 10,
+  padding: 8,
+  position: "relative",
+  zIndex: 2,
+  boxShadow: "0 12px 26px rgba(0,0,0,.28)",
+};
+
+const bracketConnectorStyle: CSSProperties = {
+  position: "absolute",
+  top: "50%",
+  width: 16,
+  height: 2,
+  borderTop: "2px solid",
+  opacity: 0.82,
+  boxShadow: "0 0 12px rgba(14,165,233,.45)",
 };
 
 const bracketMatchMetaStyle: CSSProperties = {
-  display: "flex",
-  justifyContent: "space-between",
-  gap: 8,
+  display: "grid",
+  gridTemplateColumns: "auto 1fr auto",
+  gap: 5,
   color: "#94a3b8",
-  fontSize: 11,
-  fontWeight: 800,
-  marginBottom: 8,
+  fontSize: 8,
+  fontWeight: 900,
+  marginBottom: 6,
+  textTransform: "uppercase",
 };
 
 const bracketSmallLogoStyle: CSSProperties = {
-  width: 34,
-  height: 34,
+  width: 26,
+  height: 26,
   objectFit: "contain",
   background: "#020617",
   border: "1px solid #334155",
-  borderRadius: 8,
-  padding: 3,
+  borderRadius: 7,
+  padding: 2,
 };
 
 const bracketSmallLogoEmptyStyle: CSSProperties = {
-  width: 34,
-  height: 34,
+  width: 26,
+  height: 26,
   background: "#020617",
   border: "1px solid #334155",
-  borderRadius: 8,
+  borderRadius: 7,
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
-  fontSize: 16,
+  fontSize: 12,
 };
 
 const bracketTeamRowStyle: CSSProperties = {
   display: "grid",
-  gridTemplateColumns: "36px 1fr 34px",
-  gap: 8,
+  gridTemplateColumns: "28px 1fr 26px",
+  gap: 5,
   alignItems: "center",
   border: "1px solid #334155",
-  borderRadius: 10,
-  padding: 8,
-  marginBottom: 6,
+  borderRadius: 9,
+  padding: 5,
+  marginBottom: 5,
 };
 
 const bracketTeamNameStyle: CSSProperties = {
@@ -3382,35 +3951,48 @@ const bracketTeamNameStyle: CSSProperties = {
   whiteSpace: "nowrap",
   fontWeight: 1000,
   textTransform: "uppercase",
-  fontSize: 13,
+  fontSize: 10,
+  display: "flex",
+  alignItems: "center",
+  gap: 4,
+};
+
+const winnerDotStyle: CSSProperties = {
+  fontSize: 7,
 };
 
 const bracketScoreStyle: CSSProperties = {
   textAlign: "center",
-  fontSize: 18,
+  fontSize: 15,
   fontWeight: 1000,
 };
 
-const bracketWinnerStyle: CSSProperties = {
-  marginTop: 8,
-  background: "rgba(6,78,59,.55)",
-  border: "1px solid",
-  borderRadius: 8,
-  padding: 8,
-  color: "#bbf7d0",
-  fontSize: 12,
+const bracketFooterLineStyle: CSSProperties = {
+  marginTop: 5,
+  background: "rgba(2,6,23,.75)",
+  border: "1px solid #334155",
+  borderRadius: 7,
+  padding: "5px 6px",
+  color: "#94a3b8",
+  fontSize: 9,
   fontWeight: 1000,
   textAlign: "center",
+  whiteSpace: "nowrap",
+  overflow: "hidden",
+  textOverflow: "ellipsis",
 };
 
 const bracketEmptyStyle: CSSProperties = {
   background: "#020617",
   border: "1px solid #334155",
   borderRadius: 12,
-  padding: 20,
+  padding: 16,
   color: "#94a3b8",
   textAlign: "center",
+  fontSize: 12,
 };
+
+
 
 /* ===================== PANEL CONTROL ===================== */
 
