@@ -142,7 +142,7 @@ function renderTeamLogo(team: Team) {
 }
 
 function renderPlayerRows(players: Player[]) {
-  const totalRows = Math.max(players.length, 18);
+  const totalRows = Math.max(players.length, 25);
 
   const rows = Array.from(
     {
@@ -170,7 +170,7 @@ function buildRosterStyles() {
   return `
     @page {
       size: A4 portrait;
-      margin: 7mm;
+      margin: 5mm;
     }
 
     * {
@@ -184,8 +184,8 @@ function buildRosterStyles() {
     }
 
     .sheet {
-      page-break-after: always;
       width: 100%;
+      page-break-after: always;
     }
 
     .sheet:last-child {
@@ -193,86 +193,88 @@ function buildRosterStyles() {
     }
 
     table {
-      border-collapse: collapse;
       width: 100%;
+      border-collapse: collapse;
+      table-layout: fixed;
     }
 
     .header-table td,
     .info-table td,
     .players-table th,
     .players-table td {
-      border: 2px solid #111827;
+      border: 1.6px solid #111827;
     }
 
+    /* ENCABEZADO SUPERIOR: MÁS ALTO, LOGOS MÁS CUADRADOS */
     .header-table td {
-      height: 92px;
+      height: 38mm;
       text-align: center;
       vertical-align: middle;
     }
 
     .main-logo-cell {
       width: 24%;
-      padding: 4px;
+      padding: 3mm;
     }
 
     .title-cell {
       width: 52%;
-      padding: 6px;
+      padding: 3mm;
     }
 
     .championship-logo-cell {
       width: 24%;
-      padding: 5px;
+      padding: 3mm;
     }
 
     .main-logo-img {
+      width: 36mm;
+      height: 32mm;
       max-width: 100%;
-      max-height: 84px;
+      max-height: 100%;
       object-fit: contain;
     }
 
     .side-logo-img {
+      width: 34mm;
+      height: 30mm;
       max-width: 100%;
-      max-height: 75px;
-      object-fit: contain;
-    }
-
-    .team-logo-img {
-      max-width: 100%;
-      max-height: 82px;
+      max-height: 100%;
       object-fit: contain;
     }
 
     .logo-fallback {
       display: none;
       width: 100%;
-      height: 82px;
+      height: 32mm;
       align-items: center;
       justify-content: center;
       font-weight: 900;
-      font-size: 20px;
+      font-size: 18px;
       line-height: 1.1;
     }
 
     .logo-text-placeholder {
       font-weight: 900;
-      font-size: 13px;
+      font-size: 12px;
       line-height: 1.2;
       text-transform: uppercase;
     }
 
     .tournament-name {
-      font-size: 24px;
+      font-size: 26px;
       font-weight: 900;
       text-transform: uppercase;
-      line-height: 1.1;
+      line-height: 1.05;
+      text-align: center;
     }
 
+    /* DATOS DEL EQUIPO */
     .info-table td {
-      height: 28px;
-      padding: 4px 9px;
+      height: 8.6mm;
+      padding: 2mm;
       vertical-align: middle;
-      font-size: 12px;
+      font-size: 11.5px;
     }
 
     .label-cell {
@@ -291,7 +293,7 @@ function buildRosterStyles() {
       font-size: 24px !important;
       font-weight: 900 !important;
       text-transform: uppercase;
-      letter-spacing: 0.5px;
+      letter-spacing: 0.4px;
       line-height: 1;
     }
 
@@ -299,39 +301,49 @@ function buildRosterStyles() {
       width: 24%;
       text-align: center;
       vertical-align: middle;
-      padding: 5px;
+      padding: 2mm;
+    }
+
+    .team-logo-img {
+      width: 32mm;
+      height: 25mm;
+      max-width: 100%;
+      max-height: 100%;
+      object-fit: contain;
     }
 
     .category-value {
       text-align: center;
-      font-size: 15px !important;
+      font-size: 13px !important;
       font-weight: 900 !important;
       text-transform: uppercase;
     }
 
     .court-value {
       text-align: center;
-      font-size: 13px !important;
+      font-size: 11.5px !important;
       font-weight: 800 !important;
     }
 
     .spacer {
-      height: 9px;
+      height: 3mm;
     }
 
+    /* TABLA DE JUGADORES: 25 FILAS, OCUPA MEJOR LA HOJA */
     .players-table th {
-      height: 24px;
-      padding: 4px;
-      font-size: 11px;
+      height: 7mm;
+      padding: 1mm;
+      font-size: 10px;
       text-align: center;
       font-weight: 900;
       background: #f9fafb;
     }
 
     .players-table td {
-      height: 24px;
-      padding: 4px;
-      font-size: 11px;
+      height: 6.45mm;
+      padding: 1mm;
+      font-size: 10px;
+      line-height: 1;
     }
 
     .players-table td:first-child,
@@ -341,17 +353,17 @@ function buildRosterStyles() {
     }
 
     .footer {
-      margin-top: 24px;
+      margin-top: 7mm;
       display: grid;
       grid-template-columns: 1fr 1fr;
-      gap: 70px;
+      gap: 22mm;
       text-align: center;
-      font-size: 11px;
+      font-size: 10px;
     }
 
     .signature {
       border-top: 1px solid #111827;
-      padding-top: 6px;
+      padding-top: 2mm;
     }
 
     @media print {
@@ -841,7 +853,7 @@ export default function PlayersView() {
     exportPlayerTemplate({
       tournamentName: tournament?.name ?? "Campeonato",
       team,
-      maxPlayers: 18,
+      maxPlayers: 25,
     });
   }
 
@@ -854,7 +866,7 @@ export default function PlayersView() {
     exportAllPlayerTemplates({
       tournamentName: tournament?.name ?? "Campeonato",
       teams,
-      maxPlayers: 18,
+      maxPlayers: 25,
     });
   }
 

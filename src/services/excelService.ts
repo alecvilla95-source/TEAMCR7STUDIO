@@ -130,7 +130,7 @@ function downloadWorkbook(
 function createPlayerTemplateSheet({
   tournamentName,
   team,
-  maxPlayers = 18,
+  maxPlayers = 25,
 }: {
   tournamentName: string;
   team: Team;
@@ -255,90 +255,42 @@ function createPlayerTemplateSheet({
     ...Array.from({
       length: maxPlayers,
     }).map(() => ({
-      hpt: 30,
+      hpt: 28,
     })),
   ];
 
   worksheet["!merges"] = [
     {
-      s: {
-        r: 0,
-        c: 1,
-      },
-      e: {
-        r: 0,
-        c: 2,
-      },
+      s: { r: 0, c: 1 },
+      e: { r: 0, c: 2 },
     },
     {
-      s: {
-        r: 0,
-        c: 3,
-      },
-      e: {
-        r: 0,
-        c: 4,
-      },
+      s: { r: 0, c: 3 },
+      e: { r: 0, c: 4 },
     },
     {
-      s: {
-        r: 2,
-        c: 1,
-      },
-      e: {
-        r: 2,
-        c: 2,
-      },
+      s: { r: 2, c: 1 },
+      e: { r: 2, c: 2 },
     },
     {
-      s: {
-        r: 2,
-        c: 3,
-      },
-      e: {
-        r: 4,
-        c: 4,
-      },
+      s: { r: 2, c: 3 },
+      e: { r: 4, c: 4 },
     },
     {
-      s: {
-        r: 3,
-        c: 1,
-      },
-      e: {
-        r: 3,
-        c: 2,
-      },
+      s: { r: 3, c: 1 },
+      e: { r: 3, c: 2 },
     },
     {
-      s: {
-        r: 4,
-        c: 1,
-      },
-      e: {
-        r: 4,
-        c: 2,
-      },
+      s: { r: 4, c: 1 },
+      e: { r: 4, c: 2 },
     },
     {
-      s: {
-        r: 5,
-        c: 1,
-      },
-      e: {
-        r: 5,
-        c: 4,
-      },
+      s: { r: 5, c: 1 },
+      e: { r: 5, c: 4 },
     },
     {
-      s: {
-        r: 6,
-        c: 1,
-      },
-      e: {
-        r: 6,
-        c: 4,
-      },
+      s: { r: 6, c: 1 },
+      e: { r: 6, c: 4 },
     },
   ];
 
@@ -564,7 +516,7 @@ export async function importTeamsFromExcel(
 export function exportPlayerTemplate({
   tournamentName,
   team,
-  maxPlayers = 18,
+  maxPlayers = 25,
 }: {
   tournamentName: string;
   team: Team;
@@ -598,7 +550,7 @@ export function exportPlayerTemplate({
 export function exportAllPlayerTemplates({
   tournamentName,
   teams,
-  maxPlayers = 18,
+  maxPlayers = 25,
 }: {
   tournamentName: string;
   teams: Team[];
