@@ -600,6 +600,7 @@ export default function OverlayView() {
               selectedMatchId={selectedMatchId}
               overlayMode={overlayMode}
               setOverlayMode={setOverlayMode}
+              simultaneousMatches={[]}
               simultaneousCount={0}
               simultaneousTime=""
               secondsLeft={secondsLeft}
@@ -666,6 +667,7 @@ export default function OverlayView() {
           selectedMatchId={selectedMatchId}
           overlayMode={overlayMode}
           setOverlayMode={setOverlayMode}
+          simultaneousMatches={simultaneousMatches}
           simultaneousCount={simultaneousMatches.length}
           simultaneousTime={match.time || "--:--"}
           secondsLeft={secondsLeft}
@@ -686,7 +688,7 @@ export default function OverlayView() {
           updateMatchNumber={updateMatchNumber}
           adjustScore={adjustScore}
           saveResult={saveResult}
-          openGoalScorers={() => setGoalMatch(match)}
+          openGoalScorers={(targetMatch) => setGoalMatch(targetMatch)}
         />
       )}
 
@@ -950,9 +952,9 @@ function MultiMatchCard({
         />
 
         <div style={multiScoreStyle}>
-          <span>{match.scoreA}</span>
-          <small>VS</small>
-          <span>{match.scoreB}</span>
+          <span style={multiScoreNumberStyle}>{match.scoreA}</span>
+          <small style={multiVsStyle}>VS</small>
+          <span style={multiScoreNumberStyle}>{match.scoreB}</span>
         </div>
 
         <MiniTeamSide
@@ -1308,6 +1310,7 @@ function ControlPanel({
   selectedMatchId,
   overlayMode,
   setOverlayMode,
+  simultaneousMatches,
   simultaneousCount,
   simultaneousTime,
   secondsLeft,
@@ -1335,6 +1338,7 @@ function ControlPanel({
   selectedMatchId: number | null;
   overlayMode: OverlayMode;
   setOverlayMode: (mode: OverlayMode) => void;
+  simultaneousMatches: Match[];
   simultaneousCount: number;
   simultaneousTime: string;
   secondsLeft: number;
@@ -1367,7 +1371,7 @@ function ControlPanel({
     amount: number
   ) => void;
   saveResult: (match: Match) => void;
-  openGoalScorers: () => void;
+  openGoalScorers: (match: Match) => void;
 }) {
   const matchOptions = [...fixture].sort((a, b) => {
     if (a.round !== b.round) {
@@ -1380,6 +1384,13 @@ function ControlPanel({
 
     return a.id - b.id;
   });
+
+  const controlledMatches =
+    simultaneousMatches.length > 0
+      ? simultaneousMatches
+      : selectedMatch
+      ? [selectedMatch]
+      : [];
 
   return (
     <section style={controlPanelStyle}>
@@ -1563,127 +1574,38 @@ function ControlPanel({
             </button>
           </div>
         </div>
+      </div>
 
-        <div style={controlBlockStyle}>
-          <h3 style={controlBlockTitleStyle}>
-            ⚽ Marcador del partido base
-          </h3>
+      <div style={simultaneousControlBoxStyle}>
+        <h3 style={controlBlockTitleStyle}>
+          ⚽ Control de marcadores simultáneos
+        </h3>
 
-          {!selectedMatch ? (
-            <div style={emptyControlStyle}>
-              Selecciona un partido para editar marcador.
-            </div>
-          ) : (
-            <>
-              <ScoreControlRow
-                label={selectedMatch.teamA?.name ?? "Equipo A"}
-                value={selectedMatch.scoreA}
-                onMinus={() =>
-                  adjustScore(
-                    selectedMatch.id,
-                    "scoreA",
-                    -1
-                  )
-                }
-                onPlus={() =>
-                  adjustScore(
-                    selectedMatch.id,
-                    "scoreA",
-                    1
-                  )
-                }
-                onChange={(value) =>
-                  updateMatchNumber(
-                    selectedMatch.id,
-                    "scoreA",
-                    value
-                  )
-                }
-              />
-
-              <ScoreControlRow
-                label={selectedMatch.teamB?.name ?? "Equipo B"}
-                value={selectedMatch.scoreB}
-                onMinus={() =>
-                  adjustScore(
-                    selectedMatch.id,
-                    "scoreB",
-                    -1
-                  )
-                }
-                onPlus={() =>
-                  adjustScore(
-                    selectedMatch.id,
-                    "scoreB",
-                    1
-                  )
-                }
-                onChange={(value) =>
-                  updateMatchNumber(
-                    selectedMatch.id,
-                    "scoreB",
-                    value
-                  )
-                }
-              />
-
-              {selectedMatch.scoreA === selectedMatch.scoreB &&
-                selectedMatch.stage !== "GROUP" && (
-                  <div style={penaltyControlBoxStyle}>
-                    <strong>Penales</strong>
-
-                    <div style={penaltyControlGridStyle}>
-                      <input
-                        type="number"
-                        min={0}
-                        value={selectedMatch.penaltyA ?? 0}
-                        onChange={(event) =>
-                          updateMatchNumber(
-                            selectedMatch.id,
-                            "penaltyA",
-                            Number(event.target.value)
-                          )
-                        }
-                        style={scoreInputStyle}
-                      />
-
-                      <span>-</span>
-
-                      <input
-                        type="number"
-                        min={0}
-                        value={selectedMatch.penaltyB ?? 0}
-                        onChange={(event) =>
-                          updateMatchNumber(
-                            selectedMatch.id,
-                            "penaltyB",
-                            Number(event.target.value)
-                          )
-                        }
-                        style={scoreInputStyle}
-                      />
-                    </div>
-                  </div>
-                )}
-
-              <div style={smallButtonsGridStyle}>
-                <button
-                  onClick={() => saveResult(selectedMatch)}
-                  style={greenButtonStyle}
-                >
-                  💾 Guardar resultado
-                </button>
-
-                <button
-                  onClick={openGoalScorers}
-                  style={orangeButtonStyle}
-                >
-                  ⚽ Registrar goleadores
-                </button>
-              </div>
-            </>
-          )}
+        <div style={modeInfoStyle}>
+          Controlando {controlledMatches.length} partido(s) del horario{" "}
+          {simultaneousTime || "--:--"}.
         </div>
+
+        {controlledMatches.length === 0 ? (
+          <div style={emptyControlStyle}>
+            Selecciona un partido para mostrar sus controles.
+          </div>
+        ) : (
+          <div style={simultaneousCardsGridStyle}>
+            {controlledMatches.map((match) => (
+              <SimultaneousScoreCard
+                key={match.id}
+                match={match}
+                isMain={selectedMatchId === match.id}
+                selectMatch={selectMatch}
+                updateMatchNumber={updateMatchNumber}
+                adjustScore={adjustScore}
+                saveResult={saveResult}
+                openGoalScorers={openGoalScorers}
+              />
+            ))}
+          </div>
+        )}
       </div>
 
       <div style={controlHelpStyle}>
@@ -1691,6 +1613,197 @@ function ControlPanel({
         <strong>/overlay?control=1</strong>
       </div>
     </section>
+  );
+}
+
+function SimultaneousScoreCard({
+  match,
+  isMain,
+  selectMatch,
+  updateMatchNumber,
+  adjustScore,
+  saveResult,
+  openGoalScorers,
+}: {
+  match: Match;
+  isMain: boolean;
+  selectMatch: (matchId: number) => void;
+  updateMatchNumber: (
+    matchId: number,
+    field:
+      | "scoreA"
+      | "scoreB"
+      | "penaltyA"
+      | "penaltyB",
+    value: number
+  ) => void;
+  adjustScore: (
+    matchId: number,
+    field: "scoreA" | "scoreB",
+    amount: number
+  ) => void;
+  saveResult: (match: Match) => void;
+  openGoalScorers: (match: Match) => void;
+}) {
+  const needsPenalties =
+    match.scoreA === match.scoreB &&
+    match.stage !== "GROUP";
+
+  return (
+    <article
+      style={{
+        ...simultaneousScoreCardStyle,
+        borderColor: isMain ? "#22c55e" : "#334155",
+        boxShadow: isMain
+          ? "0 0 18px rgba(34,197,94,.25)"
+          : "none",
+      }}
+    >
+      <div style={simultaneousCardHeaderStyle}>
+        <div>
+          <div
+            style={{
+              color:
+                match.category === "WOMEN"
+                  ? "#f9a8d4"
+                  : "#38bdf8",
+              fontWeight: 1000,
+              fontSize: 12,
+              letterSpacing: 1,
+            }}
+          >
+            {getCategoryName(match)}
+          </div>
+
+          <div style={simultaneousCardTitleStyle}>
+            {getCourtLabel(match)}
+          </div>
+
+          <div style={simultaneousCardMetaStyle}>
+            Partido {match.id} | {match.time || "--:--"}
+          </div>
+        </div>
+
+        <button
+          onClick={() => selectMatch(match.id)}
+          style={isMain ? greenButtonStyle : blueButtonStyle}
+        >
+          {isMain ? "Principal" : "Usar principal"}
+        </button>
+      </div>
+
+      <ScoreControlRow
+        label={match.teamA?.name ?? "Equipo A"}
+        value={match.scoreA}
+        onMinus={() =>
+          adjustScore(
+            match.id,
+            "scoreA",
+            -1
+          )
+        }
+        onPlus={() =>
+          adjustScore(
+            match.id,
+            "scoreA",
+            1
+          )
+        }
+        onChange={(value) =>
+          updateMatchNumber(
+            match.id,
+            "scoreA",
+            value
+          )
+        }
+      />
+
+      <ScoreControlRow
+        label={match.teamB?.name ?? "Equipo B"}
+        value={match.scoreB}
+        onMinus={() =>
+          adjustScore(
+            match.id,
+            "scoreB",
+            -1
+          )
+        }
+        onPlus={() =>
+          adjustScore(
+            match.id,
+            "scoreB",
+            1
+          )
+        }
+        onChange={(value) =>
+          updateMatchNumber(
+            match.id,
+            "scoreB",
+            value
+          )
+        }
+      />
+
+      {needsPenalties && (
+        <div style={penaltyControlBoxStyle}>
+          <strong>Penales</strong>
+
+          <div style={penaltyControlGridStyle}>
+            <input
+              type="number"
+              min={0}
+              value={match.penaltyA ?? 0}
+              onChange={(event) =>
+                updateMatchNumber(
+                  match.id,
+                  "penaltyA",
+                  Number(event.target.value)
+                )
+              }
+              style={scoreInputStyle}
+            />
+
+            <span>-</span>
+
+            <input
+              type="number"
+              min={0}
+              value={match.penaltyB ?? 0}
+              onChange={(event) =>
+                updateMatchNumber(
+                  match.id,
+                  "penaltyB",
+                  Number(event.target.value)
+                )
+              }
+              style={scoreInputStyle}
+            />
+          </div>
+        </div>
+      )}
+
+      <div style={smallButtonsGridStyle}>
+        <button
+          onClick={() => saveResult(match)}
+          style={greenButtonStyle}
+        >
+          💾 Guardar
+        </button>
+
+        <button
+          onClick={() => openGoalScorers(match)}
+          style={orangeButtonStyle}
+        >
+          ⚽ Goleadores
+        </button>
+      </div>
+
+      {match.status === "FINISHED" && (
+        <div style={winnerControlStyle}>
+          🏆 Ganador: {match.winner?.name ?? "Definido"}
+        </div>
+      )}
+    </article>
   );
 }
 
@@ -2652,6 +2765,17 @@ const multiScoreStyle: CSSProperties = {
   padding: "10px 8px",
 };
 
+const multiScoreNumberStyle: CSSProperties = {
+  fontSize: 34,
+  fontWeight: 1000,
+  color: "#f8fafc",
+};
+
+const multiVsStyle: CSSProperties = {
+  color: "#22d3ee",
+  fontWeight: 1000,
+};
+
 const multiStatusStyle: CSSProperties = {
   marginTop: 14,
   background: "#0f172a",
@@ -2851,6 +2975,60 @@ const penaltyControlGridStyle: CSSProperties = {
   alignItems: "center",
   textAlign: "center",
   marginTop: 8,
+};
+
+const simultaneousControlBoxStyle: CSSProperties = {
+  background: "#020617",
+  border: "1px solid #334155",
+  borderRadius: 14,
+  padding: 16,
+  marginTop: 16,
+};
+
+const simultaneousCardsGridStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns:
+    "repeat(auto-fit, minmax(320px, 1fr))",
+  gap: 14,
+  marginTop: 14,
+};
+
+const simultaneousScoreCardStyle: CSSProperties = {
+  background: "#0f172a",
+  border: "1px solid #334155",
+  borderRadius: 14,
+  padding: 14,
+};
+
+const simultaneousCardHeaderStyle: CSSProperties = {
+  display: "flex",
+  justifyContent: "space-between",
+  gap: 12,
+  alignItems: "center",
+  marginBottom: 12,
+};
+
+const simultaneousCardTitleStyle: CSSProperties = {
+  fontSize: 20,
+  fontWeight: 1000,
+  marginTop: 4,
+};
+
+const simultaneousCardMetaStyle: CSSProperties = {
+  color: "#94a3b8",
+  fontSize: 12,
+  marginTop: 4,
+};
+
+const winnerControlStyle: CSSProperties = {
+  marginTop: 12,
+  background: "#064e3b",
+  color: "#bbf7d0",
+  border: "1px solid #16a34a",
+  borderRadius: 10,
+  padding: 10,
+  textAlign: "center",
+  fontWeight: 900,
 };
 
 const controlHelpStyle: CSSProperties = {
