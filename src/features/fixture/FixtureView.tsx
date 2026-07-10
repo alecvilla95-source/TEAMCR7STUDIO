@@ -33,6 +33,47 @@ interface VenueGroup {
   matches: Match[];
 }
 
+function getWomenFieldLetter(index: number) {
+  const letters = ["A", "B", "C", "D"];
+
+  return letters[index - 1] ?? String(index);
+}
+
+function replaceOldCourtText(label: string) {
+  return label
+    .replaceAll("C. Mujer 1", "Campo A")
+    .replaceAll("C. Mujer 2", "Campo B")
+    .replaceAll("C. Mujer 3", "Campo C")
+    .replaceAll("C. Mujer 4", "Campo D")
+    .replaceAll("Cancha 1", "Campo 1")
+    .replaceAll("Cancha 2", "Campo 2")
+    .replaceAll("Cancha 3", "Campo 3")
+    .replaceAll("Cancha 4", "Campo 4")
+    .replaceAll("cancha", "campo")
+    .replaceAll("Cancha", "Campo")
+    .replaceAll("canchas", "campos")
+    .replaceAll("Canchas", "Campos");
+}
+
+function getFieldLabel(match: Match) {
+  if (match.courtLabel) {
+    return replaceOldCourtText(match.courtLabel);
+  }
+
+  if (match.category === "WOMEN") {
+    return `Campo ${getWomenFieldLetter(match.court || 1)}`;
+  }
+
+  return `Campo ${match.court || 1}`;
+}
+
+function getDisplayMatch(match: Match): Match {
+  return {
+    ...match,
+    courtLabel: getFieldLabel(match),
+  };
+}
+
 function getCategoryLabel(
   category: VenueCategory
 ) {
@@ -64,7 +105,7 @@ function getSmartRoundName(
   }
 
   const hasFinalLabel = matches.some((match) =>
-    (match.courtLabel ?? "")
+    getFieldLabel(match)
       .toUpperCase()
       .includes("FINAL")
   );
@@ -73,11 +114,11 @@ function getSmartRoundName(
     return "FINALES GENERALES";
   }
 
-  const hasCourtLabels = matches.some(
+  const hasFieldLabels = matches.some(
     (match) => match.courtLabel
   );
 
-  if (hasCourtLabels) {
+  if (hasFieldLabels) {
     return `RONDA ${round}`;
   }
 
@@ -137,9 +178,7 @@ function groupByVenue(
   const map = new Map<string, VenueGroup>();
 
   matches.forEach((match) => {
-    const label =
-      match.courtLabel ??
-      `Cancha ${match.court || 1}`;
+    const label = getFieldLabel(match);
 
     const category: VenueCategory =
       match.category ?? "GENERAL";
@@ -267,7 +306,7 @@ export default function FixtureView() {
               Sistema:{" "}
               <strong>
                 {tournament?.courtMode === "SEPARATE_BRACKETS"
-                  ? "Llaves separadas por cancha"
+                  ? "Llaves separadas por campo"
                   : "Reparto por horario"}
               </strong>
             </p>
@@ -313,12 +352,12 @@ export default function FixtureView() {
           />
 
           <InfoBox
-            label="Canchas Varones"
+            label="Campos Varones"
             value={tournament?.courts ?? 0}
           />
 
           <InfoBox
-            label="Canchas Mujeres"
+            label="Campos Mujeres"
             value={tournament?.womenCourts ?? 0}
           />
 
@@ -429,7 +468,7 @@ export default function FixtureView() {
                       (match, index) => (
                         <MatchCard
                           key={match.id}
-                          match={match}
+                          match={getDisplayMatch(match)}
                           displayLabel={`Partido ${
                             index + 1
                           }`}
